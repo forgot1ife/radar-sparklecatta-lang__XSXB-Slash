@@ -1,0 +1,203 @@
+// XSXB-Slash Parry Burst HLSL (`xsxb-parry` v1, docs/SPEC_PARRY.md).
+// Shared across Unreal Engine 5 Material Custom nodes and standalone HLSL verification (fxc ps_5_0).
+// All input masks are linear data (sRGB OFF); Unreal UV origin is top-left (y=0 is top = spark head).
+
+#ifndef XSXB_PARRY_LAYER_USH
+#define XSXB_PARRY_LAYER_USH
+
+// 1. Star + Atmospheric Glow (Additive, bDisableDepthTest = true)
+float4 XsxbParryEvalStar(
+    float2 uv,
+    float maskSample,
+    float3 coreCol,
+    float3 edgeCol,
+    float gain,
+    float contrastPow,
+    float isGlow)
+{
+    if (gain <= 0.0005)
+    {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    if (isGlow > 0.5)
+    {
+        float2 p = uv * 2.0 - 1.0;
+        float r2 = dot(p, p);
+        float k = exp(-r2 * 9.0) * (1.0 - smoothstep(0.6, 1.0, r2));
+        return float4(edgeCol * (k * gain), 1.0);
+    }
+    float k = pow(max(maskSample, 0.0), contrastPow);
+    float3 c = lerp(edgeCol, coreCol, smoothstep(0.25, 0.9, maskSample));
+    return float4(c * (k * gain), 1.0);
+}
+
+// 1b. Circular-Base Impact Flash (Premultiplied Hybrid Blend: rgb = Emissive, a = Opacity; bDisableDepthTest = true)
+float4 XsxbParryEvalFlash(
+    float2 uv,
+    float maskSample,
+    float3 coreCol,
+    float3 edgeCol,
+    float opacityFade,
+    float blurAmt,
+    float hollowAmt,
+    float hdrGain)
+{
+    float op = saturate(opacityFade);
+    if (op <= 0.0005)
+    {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    float2 p = uv * 2.0 - 1.0;
+    float r = length(p);
+    if (r > 1.0)
+    {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    float edgeEnv = smoothstep(1.0, 1.0 - max(0.02, blurAmt * 0.92), r);
+    float inEnv = (hollowAmt > 0.001) ? smoothstep(hollowAmt * 0.58, hollowAmt * 0.88 + 0.05, r) : 1.0;
+    float m = saturate(maskSample * edgeEnv * inEnv);
+    float3 c = lerp(edgeCol, coreCol, smoothstep(0.30, 0.90, maskSample * (1.0 - r * 0.40)));
+    float a = clamp(m * op * 0.62, 0.0, 0.92);
+    float3 rgb = c * (m * op * (0.35 + hdrGain * 0.22));
+    return float4(rgb, a);
+}
+
+// 2-4. Additive Batch:
+//   mode 0 = velocity-aligned spark streak (sparkSample sampled at float2(u*0.5+0.5, 1.0 - v))
+//   mode 1 = 90-deg crossed diamond flash needle (flashSample sampled at float2(u*0.5+0.5, v))
+//   mode 2 = alpha-clipped molten ember speck (returns mask in .a for OpacityMaskClipValue = 0.3333)
+//   mode 3 = curling leader ribbon
+float4 XsxbParryEvalAdditive(
+    float2 quadUv,
+    float mode,
+    float3 hdrColor,
+    float alphaFade,
+    float sparkSample,
+    float flashSample,
+    float useTextures)
+{
+    float u = quadUv.x;
+    float v = quadUv.y;
+
+    if (mode > 1.5 && mode < 2.5)
+    {
+        float r2 = u * u + v * v;
+        float mask = 1.0 - r2;
+        if (mask < 0.3333)
+        {
+            return float4(0.0, 0.0, 0.0, 0.0);
+        }
+        return float4(hdrColor * alphaFade, mask);
+    }
+
+    if (mode > 0.5 && mode < 1.5)
+    {
+        float inten = 0.0;
+        if (useTextures > 0.5)
+        {
+            inten = flashSample;
+        }
+        else
+        {
+            float e = 1.0 - abs(2.0 * v - 1.0);
+            float w = max(0.015, e);
+            inten = pow(e, 1.25) * pow(max(0.0, 1.0 - abs(u) / w), 2.2)
+                  + exp(-u * u * 400.0) * e * e * 0.5;
+        }
+        return float4(hdrColor * (alphaFade * inten), 1.0);
+    }
+
+    if (mode > 2.5)
+    {
+        float a = max(0.0, 1.0 - abs(u));
+        return float4(hdrColor * (a * a * alphaFade), 1.0);
+    }
+
+    float sInten = 0.0;
+    if (useTextures > 0.5)
+    {
+        sInten = sparkSample;
+    }
+    else
+    {
+        float a = pow(max(0.0, 1.0 - abs(u)), 2.2);
+        sInten = a * (0.1 + 0.9 * pow(max(v, 0.0), 0.75))
+               * smoothstep(1.0, 0.95, v)
+               * smoothstep(0.0, 0.3, v);
+    }
+    return float4(hdrColor * (alphaFade * sInten), 1.0);
+}
+
+// 5. Translucent Dissolving FBM Smoke Puff + Warm Rim (never an opaque disc)
+float4 XsxbParryEvalSmoke(
+    float2 uv,
+    float noiseOct0,
+    float noiseOct1,
+    float radialMaskSample,
+    float useMask,
+    float4 puffData,
+    float3 smokeColor,
+    float warmDecay,
+    float3 warmRimColor)
+{
+    float2 p = uv * 2.0 - 1.0;
+    float r = length(p);
+    float n = noiseOct0 * 0.62 + noiseOct1 * 0.38;
+    float rad = (useMask > 0.5) ? (radialMaskSample * 1.15) : smoothstep(1.0, 0.05, r);
+    float d = pow(max(n, 0.0), 1.6) * rad * 1.6;
+    float th = puffData.z;
+    float a = smoothstep(th, th + 0.16, d) * puffData.w;
+    if (a < 0.003)
+    {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    float rim = 1.0 - smoothstep(th, th + 0.07, d);
+    float lit = 0.35 + 0.65 * warmDecay;
+    float3 col = lerp(smokeColor, float3(0.07, 0.066, 0.062), lit * (1.0 - d * 0.5))
+               + warmRimColor * (rim * warmDecay * 0.9);
+    return float4(col, saturate(a));
+}
+
+// 6. Screen-Space Heatwave Refraction Profile (adds zero colour)
+float2 XsxbParryEvalRefractionOffsetPx720(
+    float2 uv,
+    float styleMode,
+    float strengthPx720,
+    float ringR,
+    float ringWid,
+    float fade,
+    float2 texGrad)
+{
+    float2 p = uv * 2.0 - 1.0;
+    float r = length(p);
+    if (r > 1.0 || fade <= 0.001 || strengthPx720 <= 0.01)
+    {
+        return float2(0.0, 0.0);
+    }
+    if (styleMode > 2.5)
+    {
+        float m = smoothstep(ringR * 1.05, ringR * 0.5, r);
+        return texGrad * (0.08 * strengthPx720 * fade * m);
+    }
+    float2 d = (r > 1e-4) ? (p / r) : float2(0.0, 0.0);
+    float w = max(ringWid, 0.005);
+    float o = 0.0;
+    if (styleMode < 0.5)
+    {
+        float dr = (r - ringR) / w;
+        o = exp(-dr * dr);
+    }
+    else if (styleMode < 1.5)
+    {
+        o = sin(saturate(r / max(ringR, 0.05)) * 3.14159265) * (1.0 - r);
+    }
+    else
+    {
+        float dr1 = (r - ringR) / w;
+        float dr2 = (r - ringR * 0.62) / (w * 0.8);
+        o = exp(-dr1 * dr1) + 0.6 * exp(-dr2 * dr2);
+    }
+    return d * (o * strengthPx720 * fade * smoothstep(1.0, 0.85, r));
+}
+
+#endif // XSXB_PARRY_LAYER_USH

@@ -1,66 +1,89 @@
-<p align="center"><img src="docs/media/readme/banner.jpg" alt="XSXB-Slash blade trail generator"></p>
+<p align="center"><img src="docs/media/readme/banner_parry.jpg" alt="XSXB-Slash blade trail & parry VFX generator"></p>
 
 # XSXB-Slash
 
 [中文](README.md) | **English**
 
-A browser tool for game sword slash trails: roll random textures, stack layers, preview the swing in 3D, and export a bundle for Unity, Godot or Unreal.
+Make game **slash trails** and **parry VFX + SFX** in the browser: roll random styles, stack layers, preview in 3D, then export a bundle for Unity, Godot or Unreal.
 
 <p align="center"><img src="docs/media/readme/demo_clip.gif" alt="Rolling random trails" width="900"></p>
 
-*A short cut from the demo video (pressing 🎲 again and again). Full video: [xsxb-slash-demo.mp4](docs/media/xsxb-slash-demo.mp4). The UI is in Chinese.*
+*A short cut from the demo video (pressing 🎲 again and again). Full video: [xsxb-slash-demo.mp4](docs/media/xsxb-slash-demo.mp4).*
 
-## Screenshots
+## Slash trails
 
 ![UI](docs/media/readme/ui.jpg)
 
-**Styles**: every item has several generators; 🎲 picks among them, or lock one under 详细 (details).
-- Body / highlight shapes: default, fine strands, thick clumps, short tail, even bars, cloud, plus new **crescent, feather, flame, brush, double band** (highlight also gets double line, broken, crescent glow…).
-- Dissolve / gnaw / refraction masks: cloud, crack, wind streak, ink, burn, dry brush, holes, shards, plus new **ripple, bolt, paper fibre, pixel, wave, scales**.
-- Refraction: wave, rings, plus new **water ripples** (overlapping droplet rings) and **water + wave**.
-- Sparks: new burst, rising embers, twinkle; smoke: new rise, ground, wisp; liquid: new spray, drip, mist.
+**Styles**: every item has several generators; 🎲 picks among them, or lock one under "详细" (details).
+- Body / highlight: default, fine threads, blobs, short tail, even strip, clouds, crescent, feathers, flame tongue, brush, double layer (highlights also: double line, broken, crescent glow…).
+- Dissolve / gnaw / refraction maps: clouds, cracks, wind threads, ink, burn, dry brush, holes, chunks, water, lightning, paper, pixel, waves, scales.
+- Refraction: ripple, rings, water ripple, water + ripple.
+- Sparks: burst, rising embers, twinkle; smoke: rise, ground, thin trail; liquid: flung off the blade, drip, mist.
 
-![Shape and mask styles](docs/media/readme/styles_textures.jpg)
-![Particle styles](docs/media/readme/styles_fx.jpg)
-![Refraction ripples](docs/media/readme/refraction_ripple.jpg)
+![Body and mask styles](docs/media/readme/styles_textures.jpg)
+![Spark, smoke and liquid styles](docs/media/readme/styles_fx.jpg)
+![Water-ripple refraction](docs/media/readme/refraction_ripple.jpg)
+
+## Parry (new)
+
+Open the **格挡 (Parry)** tab: two blades clash (wind-up → bite + hit-stop → blade tremor → bounce off), in two tiers, **normal parry** and **perfect parry**. 🎲 rolls both tiers at once (perfect is stronger); manual edits change only the current tier.
+
+![Parry tab](docs/media/readme/parry_ui.jpg)
+
+One parry is ten layers, each with its own on/off and its own 🎲:
+
+![Ten layers](docs/media/readme/parry_layers.jpg)
+
+| Layer | What it does |
+|---|---|
+| Hot spot (`star`) | White-hot star at the contact point, drawn on top of everything |
+| Glints (`needles`) | A few long, thin streaks that flash and vanish |
+| Light (`light`) | A point light that flicks on and lights the blades and floor |
+| Flash ring (`flash`) | Round shock flash: 6 procedural styles (sphere, ripple, halo…), built-in masks, or upload your own |
+| Sparks (`sparks`) | Fast spark burst with floor bounces; launch speed adjustable |
+| Molten drops (`ember`) | Slower molten-iron specks that cool and darken |
+| Ribbons (`ribbon`) | Glowing streaks, 6 flight styles; by default they glide smoothly off an invisible sphere in front of the defender |
+| Dark smoke (`smoke`) | Translucent ink smoke spreading in place at the contact, to set off the bright layers |
+| Debris (`debris`) | Spinning, bouncing metal chips |
+| Heat wave (`refr`) | Full-frame water-ripple distortion (post-process, adds no colour) |
+
+![Flash ring texture options](docs/media/readme/parry_flash.jpg)
+
+**Sound**: 20 built-in clash sounds (light → heavy). Three sliders: timbre, impact weight, ring. The sound's peak lands on the contact frame. Normal and perfect each keep their own setting and export as WAV.
+
+![Sound panel](docs/media/readme/parry_sfx.jpg)
 
 ## How to use
 
-1. Download this repo and open `index.html` in a browser. Nothing to install; the 3D preview loads three.js from a CDN, so it needs internet.
-2. On the right, pick an item (主体 body / 啃咬 gnaw / 溶解 dissolve / 高光 highlight / 折射 refraction / 火星 sparks / 烟雾 smoke / 液体 liquid / 全部 all), then press **🎲 随机** (random) or **Space**. Press again until you like it; click a thumbnail under 最近几次 (recent) to go back.
-3. Other weapon: **加载 glb…** (load glb) or drag a `.glb` onto the preview. The trail runs from the blade start to the tip.
-4. Fine tuning: **更多设置** (more settings) has the scene, per-layer parameters, texture presets and channel packing.
-5. Press **导出整套 zip（进引擎用）** (export bundle).
+1. Download this repo and open `index.html` in a browser. Nothing to install; the 3D preview loads three.js from a CDN, so you need to be online.
+2. Pick **刀光 (Slash)** or **格挡 (Parry)**, choose an item on the right (or "全部" = all), press **🎲** or **Space**. Not happy? Press again; click a thumbnail under "最近几次" to go back.
+3. Other weapon: **加载 glb…** or drag a `.glb` onto the view.
+4. Click **导出整套 zip** (export bundle).
 
-The bundle:
-
-```
-recipe.json            all layers and parameters (linear colours, metres, seconds)
-textures/shape.png     main shape     Clamp, sRGB off
-textures/mask.png      mask/dissolve  Repeat, sRGB off
-textures/highlight.png highlight      Clamp, sRGB off
-preview.png            reference frame
-```
-
-[examples/fable](examples/fable) is an exported example.
+Bundles:
+- Slash (example [examples/fable](examples/fable)): `recipe.json` + `textures/{shape,mask,highlight}.png` + `preview.png`
+- Parry (example [examples/parry_fable](examples/parry_fable)): `recipe.json` (tiers `normal` / `perfect`) + `textures/*.png` + `audio/parry_{normal,perfect}.wav` + `preview.png`
 
 ## Into a game engine
 
-- **By hand:** follow [skill/xsxb-slash-install/SKILL.md](skill/xsxb-slash-install/SKILL.md) (Unity, Godot 4, Unreal 5).
-- **With a coding agent:** give it `skill/xsxb-slash-install` (Claude Code: copy it to your project's `.claude/skills/`) and the bundle, and say "install this blade trail on my sword". Later, export a new trail and say "switch to this trail": it replaces only the recipe and the three textures, no code changes.
+- **By hand:** follow [skill/xsxb-slash-install/SKILL.md](skill/xsxb-slash-install/SKILL.md) (Unity, Godot 4, Unreal 5; slash and parry).
+- **With a coding agent:** give it `skill/xsxb-slash-install` (Claude Code: copy into the project's `.claude/skills/`) and the bundle, and say "put this trail on my sword" or "install this parry VFX and sound". Later, swapping effects only swaps the exported files.
 
 | Folder | What |
 |---|---|
-| `docs/SPEC.md` | the contract: strip UVs, shader formula, units, self-check |
-| `engines/unity/` | `XsxbSlashTrail.cs` + `XsxbSlashTrail.shader` (Built-in / URP) |
-| `engines/godot/` | `xsxb_slash_trail.gd` + shaders (Godot 4) |
-| `engines/unreal/` | `XsxbSlashTrailComponent` (C++, ProceduralMesh) + `XsxbSlashLayer.hlsl` (material Custom node) |
-| `skill/xsxb-slash-install/` | agent skill |
+| `docs/SPEC.md` | Slash contract: strip UVs, shader formula, units, self-check |
+| `docs/SPEC_PARRY.md` | Parry contract: tiers, layer parameters, peak-synced sound |
+| `docs/PARRY_MIGRATION_*.md` | What changed between parry bundle versions (Chinese) |
+| `engines/unity/` | Slash `XsxbSlashTrail` + parry `XsxbParryBurst` (Built-in / URP) |
+| `engines/godot/` | Slash `xsxb_slash_trail.gd` + parry `XsxbParryBurst.gd` (Godot 4) |
+| `engines/unreal/` | Slash `XsxbSlashTrailComponent` + parry `XsxbParryBurstComponent` (UE5 C++) |
+| `skill/xsxb-slash-install/` | Install guide for coding agents |
 
 ## Notes
 
-- All trail textures are generated by the tool; nothing is taken from any game. `assets/smoke_sheet_2048.png` (smoke flipbook, made by the author) is free to use; `assets/smoke_sheet.js` is the same image embedded so the page also works from `file://`.
-- Refraction, sparks, liquid, smoke, detail wobble and colour over age are preview features in the page. The recipe records their numbers (`docs/SPEC.md` 4b); the engine reference code draws the trail layers.
+- All textures are generated by the tool or by AI; nothing is taken from any game. `assets/smoke_sheet_2048.png` (smoke flipbook, made by the author) is free to use; `assets/smoke_sheet.js` is the same image embedded so the page also works from `file://`.
+- The parry built-in textures (`assets/parry/builtin_src/`) are AI-generated; the sounds were made by the author with AI and are free to use.
+- For slash trails, refraction / sparks / liquid / smoke are preview effects in the page; the recipe stores their parameters (`docs/SPEC.md` 4b) and the engine code draws the trail strip only. For how each parry layer is implemented in engines, see `docs/SPEC_PARRY.md`.
 
 ## License
 

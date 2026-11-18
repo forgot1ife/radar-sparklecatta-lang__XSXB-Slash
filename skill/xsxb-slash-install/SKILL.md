@@ -1,75 +1,66 @@
 ---
 name: xsxb-slash-install
-description: Install a XSXB-Slash export (recipe.json + textures/*.png) as a sword / weapon slash trail in Unity, Godot 4 or Unreal Engine 5. Use when the user has a XSXB-Slash zip or folder and wants it working on a weapon in their game project.
+description: Install a XSXB-Slash export (recipe.json + textures/*.png + audio/*.wav) as a sword / weapon slash trail ("XSXB-Slash-recipe") or dual-tier parry impact burst + SFX ("xsxb-parry") in Unity, Godot 4 or Unreal Engine 5. Use when the user has a XSXB-Slash or XSXB-Parry zip or folder and wants it working in their game project.
 ---
 
-# Install a XSXB-Slash trail
+# Install XSXB-Slash Trails & Parry Bursts
 
-The export is engine-neutral. The exact contract (strip UVs, shader formula, units) is in `docs/SPEC.md` of the XSXB-Slash repo. The reference code for each engine is in `engines/<engine>/`. Do not invent a new shader: port these files, they already match the web preview.
+Exports from XSXB-Slash are engine-neutral (`metres`, `seconds`, **linear** RGB colours + separate HDR multipliers, linear greyscale masks with sRGB OFF, and 48 kHz 16-bit stereo PCM WAV clash audio). Inspect `recipe.json` first to check which bundle type you have:
+- **`format == "XSXB-Slash-recipe"` (`version == 1`)** → **Weapon Slash Trail** (`docs/SPEC.md`).
+- **`format == "xsxb-parry"` (`version == 1`)** → **Parry Impact Burst + Clash SFX** (`docs/SPEC_PARRY.md`).
 
-## 1. Find out what you have
+Do not invent ad-hoc shaders or giant opaque billboards: use the exact reference files in `engines/<engine>/`.
 
-- The export folder: `recipe.json`, `textures/shape.png`, `textures/mask.png`, `textures/highlight.png`, `preview.png`. Read `recipe.json`; check `format == "XSXB-Slash-recipe"` and `version == 1`.
-- The engine: `ProjectSettings/ProjectVersion.txt` → Unity; `project.godot` → Godot; `*.uproject` → Unreal.
-- The weapon: ask the user which object is the blade if it is not obvious. You need two points on it: **hilt** (base of the blade) and **tip**. Create two empty child objects / sockets if they do not exist.
+---
 
-## 2. Import textures (all engines)
+## Part A · Weapon Slash Trail (`format == "XSXB-Slash-recipe"`)
 
-- All three are **data, not colour**: sRGB / "Color texture" OFF.
-- `shape.png`, `highlight.png`: wrap **Clamp**. `mask.png`: wrap **Repeat**.
-- No compression that destroys greyscale gradients if avoidable (Unity: R8 or default is fine; Unreal: Masks or Grayscale; Godot: default is fine).
+### 1. Import textures (all engines)
+- `textures/shape.png`, `textures/highlight.png`: **sRGB OFF**, Wrap **Clamp**.
+- `textures/mask.png`: **sRGB OFF**, Wrap **Repeat**.
 
-## 3. Engine steps
+### 2. Engine setup
+- **Godot 4**: Copy `engines/godot/xsxb_slash_trail*` into `res://addons/xsxb_slash/`. Add `XsxbSlashTrail` (`xsxb_slash_trail.gd`), set `recipe_path`, two `Node3D` markers `hilt` and `tip` on the blade, and the 3 textures. Enable `WorldEnvironment` Glow (`HDR threshold ≈ 1.0`).
+- **Unity (Built-in / URP)**: Copy `engines/unity/XsxbSlashTrail.shader` and `XsxbSlashTrail.cs` into `Assets/XsxbSlash/`. Ensure Linear Color Space. Add `XsxbSlashTrail`, assign `recipe` (`TextAsset`), `hilt`, `tip`, the 3 textures, and shader `XSXB-Slash/Layer`.
+- **Unreal Engine 5**: Copy `engines/unreal/XsxbSlashTrailComponent.h/.cpp` into a C++ module (`"ProceduralMeshComponent", "Json"` in `Build.cs`). Build one Translucent and one Additive Unlit Two-Sided material using a Custom node containing `XsxbSlashLayer.hlsl`. Attach `UXsxbSlashTrailComponent` to the weapon mesh and set `HiltSocket`, `TipSocket`, `RecipeFile`, textures, and materials.
 
-### Unity (Built-in or URP)
-1. Copy `engines/unity/XsxbSlashTrail.shader` and `XsxbSlashTrail.cs` into `Assets/XsxbSlashTrail/`.
-2. Copy `recipe.json` into Assets (it imports as a TextAsset) and the textures with the import settings above.
-3. Player Settings → Color Space should be **Linear**. If the project is Gamma, convert the recipe colours to gamma in `XsxbSlashTrail.cs` (`Mathf.LinearToGammaSpace`) before setting them.
-4. Add `XsxbSlashTrail` to the weapon (or any object), assign recipe, hilt, tip, the 3 textures and the shader `XSXB-Slash/Layer`.
-5. HDRP is not covered by this shader; write an HDRP Unlit Shader Graph with the same formula if needed.
+### 3. Verify & Swap
+- Run `docs/SPEC.md` §5 self-check (`debugMode = 1` UV orientation, `debugMode = 2` world-locked stripes, `debugMode = 0` vs `preview.png`).
+- To switch to a new trail later: overwrite only `recipe.json` and `textures/{shape,mask,highlight}.png` keeping sRGB OFF and Clamp/Repeat intact.
 
-### Godot 4
-1. Copy `engines/godot/*` into `res://addons/xsxb_slash/` (the shaders `#include` that exact path).
-2. Copy `recipe.json` and the textures into the project.
-3. Add a `XsxbSlashTrail` node (script `xsxb_slash_trail.gd`), set `recipe_path`, `hilt`, `tip`, the 3 textures.
-4. For HDR > 1 to glow: WorldEnvironment → Glow on, HDR threshold about 1.
+---
 
-### Unreal Engine 5
-1. Copy `engines/unreal/XsxbSlashTrailComponent.h/.cpp` into a C++ module; add `"ProceduralMeshComponent", "Json"` to its Build.cs dependencies and enable the ProceduralMeshComponent plugin. Add the module's API macro to the class if it is used from another module.
-2. Make two materials (Unlit, Two Sided, Translucent / Additive) with one Custom node each, body = `XsxbSlashLayer.hlsl`, inputs and parameter names as listed at the top of that file. Emissive = rgb, Opacity = a.
-3. Import the textures (Compression: Masks or Grayscale, sRGB off, tiling as above).
-4. Add `XsxbSlashTrailComponent` to the weapon actor, attach it to the weapon mesh, set `HiltSocket`, `TipSocket`, `RecipeFile`, textures and both materials.
-5. If the project cannot use C++, a Niagara ribbon also works, but U must be the particle's **normalised age** (ribbon renderer U0 override bound to NormalizedAge) and UV1 must be tiled from the start in metres. Check it with debug mode 1 (below) — this is where ports usually go wrong. In that case feed the Custom node's `XU` input from the same normalised age (no texture fill).
+## Part B · Parry Impact Burst + SFX (`format == "xsxb-parry"`, `version == 1`)
 
-## 4. Verify (required, do not skip)
+### 1. Bundle contents, two tiers (`normal` / `perfect`), texture & audio rules (`docs/SPEC_PARRY.md`)
+- Bundle contains `recipe.json` (with `tiers.normal` and `tiers.perfect`), `preview.png`, `textures/{star[,star_normal],spark,flash[,flash_normal],smoke[,refraction]}.png`, and `audio/parry_{normal,perfect}.wav`.
+- **All textures are linear grey masks**: turn **sRGB OFF** (`TC_Masks` / linear).
+- Wrap mode: `smoke.png` = **Repeat** (unless radial mask, which the runtimes auto-detect); `star*.png`, `spark.png` (top = head), `flash*.png`, `refraction.png` = **Clamp**.
+- **Two tiers only**: `normal` (**普通格挡**) and `perfect` (**精防**).
+- Layer & SFX architecture:
+  1. `star`: camera-facing HDR pinpoint + asymmetric razor rays (`ZTest Always`, Additive).
+  2. `light` (standalone): independent transient 3D `PointLight` (`rangeM`, `offsetTowardsCamM`, `decayS`) + soft gaussian `glow` billboard (fires even if `star` is disabled).
+  3. `flash`: circular-base camera-facing impact flash (`sphere`, `ripple`, `halo`, `corona`, `nebula`, `shatter`, built-in masks, or custom circular mask; `256×256` `textures/flash.png`) using premultiplied hybrid blend (`One, OneMinusSrcAlpha`) with `opacity`, `blur` (edge softness), `hollow`, and `expand`.
+  4. `sparks`: 240 Hz 3-tier ballistic simulation (`burst` streaks, floor-bouncing & skittering `arc` sparks off `frame.floorY`, and `ember` specks alpha-clipped at `< 0.3333` with ~18 % @ 34 Hz flicker).
+  5. `ribbon`: tapered additive strips with **6 flight styles** (`whip`, `sphereScatter` gliding over an invisible protective sphere and shooting backward behind Left Defender in unison, `bladeSlide`, `deflectCone`, `vortexWrap`, `groundSkim`).
+  6. `smoke` & `debris`: FBM-dissolving translucent dark puffs (`th: 0.12 → 0.95`, **never** an opaque disc) + `darkSparks` + spinning lit metallic iron splinters with cooling orange tips.
+  7. `refraction`: screen-space UV distortion (`ring` / `bulge` / `double` / `refraction.png` gradient) adding **zero colour**.
+  8. `sfx`: 48 kHz stereo `audio/parry_{normal,perfect}.wav` with sample-exact `peakOffsetS` (`recipe.tiers.{normal,perfect}.sfx.peakOffsetS`). Zero-lead `trigger()` seeks directly to `peakOffsetS` so the acoustic peak hits on Frame 0 with zero lag; pre-lead trigger (`trigger_pre_lead` / `TriggerPreLead` / `TriggerParryWithLead`) plays the full pre-transient scrape so the waveform peak lands at exact contact `T0`.
 
-Run the self-check in `docs/SPEC.md` section 5 and report what you saw:
+### 2. Engine setup
+- **Godot 4**:
+  1. Copy `engines/godot/XsxbParryBurst.gd` and `engines/godot/xsxb_parry_{star,flash,add,smoke,refract}.gdshader` into `res://addons/xsxb_slash/`.
+  2. Copy the parry export folder (`recipe.json` + `textures/*.png` + `audio/*.wav`) into the project.
+  3. Add `XsxbParryBurst` at the weapon contact point, set `recipe_path`, and call `burst.trigger("normal")` or `burst.trigger("perfect")` (or `burst.trigger_pre_lead(lead_s, "perfect")` when animation lead-in is known). Optional: `burst.align_to_weapons(defender_hilt_to_clash)` and `burst.sample_clash_motion(tau)`.
+  4. Enable `WorldEnvironment` ACES Filmic tonemapping + tight HDR Glow (`threshold ≈ 0.9`).
+- **Unity (URP / Built-in)**:
+  1. Copy `engines/unity/XsxbParryBurst.shader` and `XsxbParryBurst.cs` into `Assets/XsxbSlash/`, and `engines/unity/Editor/XsxbParryInstaller.cs` into `Assets/XsxbSlash/Editor/`.
+  2. In Unity Editor, run **`Tools → XSXB-Slash → Install Parry Bundle from Folder...`** (or `XsxbParryInstaller.InstallBundleToAssets`) to auto-configure `sRGB = false`, Wrap modes, `DecompressOnLoad` WAVs (`parry_normal.wav`, `parry_perfect.wav`), and generate a ready `XsxbParryBurst` prefab.
+  3. Enable **Opaque Texture** on your URP Asset + ACES Tonemapping + tight Bloom (`threshold ≈ 0.9`). Trigger at runtime via `burst.Trigger("normal" | "perfect")` or `burst.TriggerPreLead(leadS, "perfect")`.
+- **Unreal Engine 5**:
+  1. Copy `engines/unreal/XsxbParryInstall.py` and `XsxbParryLayer.ush` (plus optional C++ `XsxbParryBurstComponent.h/.cpp` with `"ProceduralMeshComponent", "Json"` in `Build.cs`).
+  2. Run `XsxbParryInstall.install_bundle(bundle_dir, "/Game/XsxbParry/MyParry")` in UE5's Python console to import linear masks (`sRGB = False`, `TC_Masks`), `SoundWave` assets (`SW_XsxbParry_parry_{normal,perfect}`), and build `M_XsxbParry_{Star,Flash,Add,Ember,Smoke,Debris,Refract}`.
+  3. Attach `UXsxbParryBurstComponent`, assign `NormalSound` & `PerfectSound`, and call `TriggerParry("normal" | "perfect")` or `TriggerParryWithLead(LeadSeconds, "perfect")`.
 
-1. `debugMode = 1`: strip is black/green at the blade and red at the tail; the **outer** edge (tip path) is green. Flipped green → swap V. Black tail → swap U.
-2. `debugMode = 2`: stripes stay fixed in the world as the strip ages.
-3. `debugMode = 0`: take a screenshot over a background like `recipe.preview.background` and compare with `preview.png`. Too thin / too dark usually means a texture still has sRGB on or the shape was sampled at `sv` instead of `1 - sv` (or the other way round).
-
-## Already installed: switch to a new trail
-
-When the trail is already working in the project and the user exports a new one ("use this trail", "switch to this one"), do not reinstall and do not touch the code:
-
-1. Find the existing install: the recipe file the component reads (`recipe_path` / `RecipeFile` / the `recipe` TextAsset) and the three imported textures it uses.
-2. Back up those four files, then overwrite them with the new `recipe.json` and `textures/*.png`, keeping the same file names / asset paths so every reference stays valid. Keep the import settings (sRGB off; Clamp / Repeat).
-3. Reimport the textures. Unreal: reimport the existing texture assets (editor, or a headless editor script while the editor is closed). Unity / Godot: the editor reimports on focus.
-4. The recipe is read when the trail starts; restart play (or the component) to pick it up. Layer count, colours, widths, lives and `fx` numbers all come from the recipe.
-5. Verify as in section 4 (debugMode 0 screenshot vs the new `preview.png`) and tell the user which preview-only features (refraction, gnaw, wobble, colour over age, UV offsets) the engine port does not draw.
-
-## Clean combos
-
-- Wire `emitting` (Unity `emitting`, Godot `emitting`, Unreal `bEmitting`) to the attack's active window: animation events / notifies on, off at the end. Do not leave it on for a whole combo.
-- `widthScale` = blade length in metres.
-- If arcs look polygonal or detached, check the frame rate first (see SPEC section 2), then that sampling happens after animation.
-
-## Common mistakes
-
-- **Weapon mesh rotated in the hand.** A weapon imported as its own file and attached to a bone can carry the importer's axis fix (e.g. Godot adds a -90° X rotation to a Z-up FBX mesh node; bones keep their source-engine local frames). If the sword is authored for that bone (Unreal sockets/bones attach with no extra rotation), reset that node's transform. Do not trust markers parented to the same node as proof: compare the grip against the original engine or a reference pose.
-
-- Using the engine's built-in trail with U on length: the shape and dissolve slide wrongly. Use the scripts here.
-- Converting the linear colours to linear a second time (Godot `source_color`, Unity `Color` gamma conversions).
-- Forgetting units: recipe is in **metres and seconds**; Unreal works in centimetres (the component converts).
-- Drawing layers in the wrong order: `recipe.layers[0]` is the bottom layer.
+### 3. Switching to a new parry export
+Overwrite only `recipe.json`, `textures/*.png`, and `audio/*.wav` in place (keeping `sRGB = false` on textures) — no script, C#, C++, or shader edits needed.

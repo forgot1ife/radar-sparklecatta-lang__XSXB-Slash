@@ -2,3 +2,7 @@ index.html.bak*
 tests/
 test_bundle/textures/shape_oldhead.png
 *.tmp
+*.bak_*
+__pycache__/
+assets/parry/sfx_src/
+assets/parry/rebuild_sekiro_bank.py

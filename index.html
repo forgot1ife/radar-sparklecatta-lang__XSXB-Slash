@@ -32,12 +32,12 @@ main[hidden]{display:none!important}
 .tabs[hidden]{display:none!important}
 #ctrl,.ctrl{background:var(--paper);border-radius:22px;box-shadow:var(--sh);padding:22px;overflow:auto;max-height:calc(100vh - 104px)}
 #view,.view{background:var(--paper);border-radius:22px;box-shadow:var(--sh);padding:22px 24px;overflow:auto}
-main#tab4{grid-template-columns:minmax(0,1fr) 380px}
+main#tab4,main#tab5{grid-template-columns:minmax(0,1fr) 380px}
 .stage{position:relative;height:calc(100vh - 104px);min-height:440px;border-radius:28px;overflow:hidden;background:#0b0a0e;box-shadow:var(--sh)}
-#three4{position:absolute;inset:0}
-#info4{position:absolute;left:18px;bottom:14px;color:rgba(255,253,248,.6);font-size:12px;font-weight:600;pointer-events:none}
+#three4,#three5{position:absolute;inset:0}
+#info4,#info5{position:absolute;left:18px;bottom:14px;color:rgba(255,253,248,.6);font-size:12px;font-weight:600;pointer-events:none}
 .stagebar{position:absolute;right:14px;top:14px;display:flex;gap:6px}
-.stagebar button{background:rgba(255,253,248,.92);box-shadow:none;font-weight:700}
+.stagebar button{background:rgba(255,253,248,.92);box-shadow:none;font-weight:700;white-space:nowrap}
 .drop{position:absolute;inset:12px;border:2.5px dashed #fff;border-radius:22px;display:none;place-items:center;font:700 20px/1.3 var(--disp);color:#fff;background:rgba(0,47,167,.45);pointer-events:none}
 .drop.on{display:grid}
 .sh{font:700 15px/1.2 var(--disp);margin:22px 0 10px;color:var(--ink);display:flex;align-items:baseline;gap:8px}
@@ -113,12 +113,39 @@ canvas{display:block;max-width:100%;image-rendering:auto;border-radius:12px}
 .pnl details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
 .stagebar .sw button{min-height:32px;background:rgba(255,253,248,.92)}
 .stagebar .sw button.on,.stagebar button.on{background:var(--k);color:#fff}
-@media (max-width:900px){.top{flex-wrap:wrap;height:auto;padding:12px 16px;gap:10px}main,main#tab4{grid-template-columns:1fr;padding:0 16px 24px}
+#items5{grid-template-columns:repeat(4,1fr)}#items5 button{padding:0 4px;font-size:12.5px}
+.split-hint{margin:8px 0;padding:6px 10px;border-radius:10px;font-size:12px;line-height:1.4;background:var(--k-t);color:var(--k);font-weight:600;box-shadow:inset 0 0 0 1.5px var(--k)}
+.sfx-group{margin:4px 0 8px}
+.sfx-grades{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:4px 0 8px;max-height:176px;overflow-y:auto}
+.sfx-grades button{min-height:29px;padding:2px 4px;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.sfx-grades button.on{background:var(--k);color:#fff;box-shadow:none}
+.sfx-presets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 8px}
+.sfx-presets button{min-height:32px;padding:4px 8px;font-size:12px;font-weight:700;border-radius:8px}
+.sfx-presets button.on{background:var(--k);color:#fff;box-shadow:none}
+.sfx-wave{width:100%;height:58px;border-radius:10px;background:#14161a;margin:8px 0;cursor:pointer}
+.sfx-saves{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0 6px}
+.sfx-saves button{min-height:40px;height:auto;padding:6px 8px;font-weight:700;font-size:12.5px;line-height:1.25}
+.sfx-saves button small{display:block;font-size:10.5px;font-weight:500;opacity:.84;margin-top:2px}
+.sfx-pools{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
+.sfx-pool{background:var(--bg);border-radius:10px;padding:6px;box-shadow:inset 0 0 0 1px var(--line)}
+.sfx-pool-hd{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--ink2);margin-bottom:4px}
+.sfx-pool-hd button{min-height:0;height:20px;padding:0 6px;font-size:10.5px;border-radius:6px;background:transparent;color:var(--mut);box-shadow:none}
+.sfx-pool-hd button:hover{color:var(--ink);background:var(--line)}
+.sfx-pool-list{display:flex;flex-direction:column;gap:4px;max-height:146px;overflow-y:auto}
+.sfx-chip{display:flex;align-items:center;gap:3px;border-radius:8px;background:#fff;box-shadow:inset 0 0 0 1px var(--line);padding:2px 3px 2px 6px}
+.sfx-chip.on{background:var(--k-t);box-shadow:inset 0 0 0 1.5px var(--k)}
+.sfx-chip button{min-height:0;height:24px;padding:0;background:transparent;box-shadow:none;font-size:11.5px}
+.sfx-chip .pick{flex:1;text-align:left;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sfx-chip.on .pick{color:var(--k);font-weight:700}
+.sfx-chip .act{width:20px;flex:none;color:var(--mut);border-radius:5px;font-weight:700}
+.sfx-chip .act:hover{background:var(--line);color:var(--ink)}
+.sfx-pool-empty{font-size:11px;color:var(--mut);padding:6px 2px;text-align:center}
+@media (max-width:900px){.top{flex-wrap:wrap;height:auto;padding:12px 16px;gap:10px}main,main#tab4,main#tab5{grid-template-columns:1fr;padding:0 16px 24px}
   #ctrl,.ctrl{max-height:none}.stage{height:62vh}.pv canvas{width:100%;height:auto}.top .hint{display:none}}
 </style>
 </head>
 <body>
-<header class="top"><div class="mark"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M4 20C10 18 16 12 20 4"/><path d="M8 21c4-1.2 8-4.5 11-9" opacity=".5"/></svg></i>XSXB<b>-Slash</b></div><nav class="tabs" hidden><button data-tab="4" class="on">刀光</button><button data-tab="1">主体形状</button><button data-tab="2">溶解遮罩</button><button data-tab="3">高光</button></nav><span class="sp"></span><span class="hint">空格 = 随机当前选项 · 拖 glb 进画面换武器</span></header>
+<header class="top"><div class="mark"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M4 20C10 18 16 12 20 4"/><path d="M8 21c4-1.2 8-4.5 11-9" opacity=".5"/></svg></i>XSXB<b>-Slash</b></div><nav class="tabs"><button data-tab="4" class="on">刀光</button><button data-tab="5">格挡</button><button data-tab="1" hidden>主体形状</button><button data-tab="2" hidden>溶解遮罩</button><button data-tab="3" hidden>高光</button></nav><span class="sp"></span><span class="hint">空格 = 随机当前选项 · 拖 glb 进画面换武器</span></header>
 <main id="tab1" hidden>
 <section id="ctrl">
   <button id="roll" class="roll">🎲 随机一个</button>
@@ -652,6 +679,27 @@ window.addEventListener('keydown',e=>{if(window.BTG_tab===2&&e.code==='Space'&&e
 </section>
 </main>
 
+<main id="tab5" hidden>
+<section class="stage" id="stage5">
+  <div id="three5"></div>
+  <div id="info5"></div>
+  <div class="stagebar" id="bar5"><div class="sw" id="tier5"></div><div class="sw" id="bgsw5"><button data-bg="dark" class="on" title="深色棋盘舞台">深底</button><button data-bg="klein" title="克莱因蓝 #002FA7 + 奶油网格舞台">蓝底</button></div><button id="mute5" class="on" title="预览音效开 / 关">🔊 声音</button><button id="slow5" title="慢放 / 正常速度">慢放</button><button id="play5" title="暂停 / 继续">⏸</button></div>
+  <div class="drop" id="drop5">松手：加载这个 glb 当武器</div>
+</section>
+<section class="ctrl" id="ctrl5">
+  <div class="items" id="items5"></div>
+  <button id="rand5" class="roll">🎲 随机</button>
+  <div id="histWrap5" hidden>
+    <div class="cap" style="margin:4px 0 6px">最近几次（点一下换回去）</div>
+    <div class="hist4" id="hist5"></div>
+  </div>
+  <div id="splitHint5" class="split-hint" hidden></div>
+  <div id="panels5"></div>
+  <button class="primary wide" id="bundle5" title="双档配方+贴图+双档音效WAV+预览图，一个 zip；照 docs/SPEC_PARRY.md 或 skill 装进 Unity / Godot / UE">导出整套 zip（进引擎用）</button>
+  <input type="file" id="wFile5" accept=".glb,.gltf" hidden>
+</section>
+</main>
+
 <script>
 // ===================== ③ 高光图（复用 ① 的生成器，换一组参数范围） =====================
 (()=>{
@@ -874,7 +922,8 @@ function restartSwing(){for(const L of layers)L.samples=[];simT=0;lastSample=0;l
 window.BTG_seek=t=>{for(const L of layers)L.samples=[];simT=0;lastSample=0;lastK=-1;distAcc=0;prevTip=null;$('pause4').checked=true;simT=t;advance();render1();return layers.map(L=>L.samples.length);};
 
 // ---------- recording API (?rec=1&w=&h=): full-window preview driven from outside, deterministic ----------
-if(REC){const q=new URLSearchParams(location.search),W=+q.get('w')||1280,H=+q.get('h')||720;
+const REC_PARRY=REC&&new URLSearchParams(location.search).get('mode')==='parry';   // ?rec=1&mode=parry is driven by assets/parry/parry_tab.js
+if(REC&&!REC_PARRY){const q=new URLSearchParams(location.search),W=+q.get('w')||1280,H=+q.get('h')||720;
   const st=document.createElement('style');st.textContent=`header,#ctrl4,#info4,#bar4,#drop4{display:none!important}.stage{border-radius:0!important;box-shadow:none!important}main#tab4{display:block!important;min-height:0}#three4{position:fixed!important;left:0;top:0;width:${W}px!important;height:${H}px!important}body{overflow:hidden}`;document.head.appendChild(st);}
 function seeded(seed,fn){const R=Math.random,r=(()=>{let a=seed>>>0||1;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};})();Math.random=r;try{return fn();}finally{Math.random=R;}}
 const RT={shape:{},mask:{},hl:{}},RG={shape:{},mask:{},hl:{}};
@@ -1489,8 +1538,16 @@ function uiInit(){
   applyUI();selectItem('main');
 }
 
-if(!REC){document.querySelector('.tabs button[data-tab="4"]').click();uiInit();}   // the preview is the only screen
+if(!REC){document.querySelector('.tabs button[data-tab="4"]').click();uiInit();}
+// the 格挡 tab (assets/parry/parry_tab.js) shares this three.js build and the zip writer
+window.BTG_THREE={THREE,OrbitControls,EffectComposer,RenderPass,UnrealBloomPass,OutputPass,ShaderPass,zipStore,blobBytes,REC,REC_PARRY,GLTF:async()=>(await import('three/addons/loaders/GLTFLoader.js')).GLTFLoader};
+window.dispatchEvent(new Event('btg-three'));
 </script>
+<script src="assets/parry/parry_builtin.js"></script>
+<script src="assets/parry/parry_sfx_bank.js"></script>
+<script src="assets/parry/parry_audio.js"></script>
+<script src="assets/parry/parry_core.js"></script>
+<script src="assets/parry/parry_tab.js"></script>
 
 </body>
 </html>
