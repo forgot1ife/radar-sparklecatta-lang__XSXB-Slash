@@ -1,7 +1,5 @@
 <p align="center"><img src="docs/media/readme/banner_parry.jpg" alt="XSXB-Slash 刀光与格挡特效生成器"></p>
 
-# XSXB-Slash 刀光与格挡特效生成器
-
 **中文** | [English](README_en.md)
 
 在浏览器里做游戏**刀光**和**格挡特效 + 音效**：一键随机、叠层、3D 实时预览，再导出一个包，放进 Unity、Godot 或 Unreal。

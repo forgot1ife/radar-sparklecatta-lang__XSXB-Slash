@@ -1,7 +1,5 @@
 <p align="center"><img src="docs/media/readme/banner_parry.jpg" alt="XSXB-Slash blade trail & parry VFX generator"></p>
 
-# XSXB-Slash
-
 [中文](README.md) | **English**
 
 Make game **slash trails** and **parry VFX + SFX** in the browser: roll random styles, stack layers, preview in 3D, then export a bundle for Unity, Godot or Unreal.
