@@ -17,7 +17,11 @@ public class XsxbSlashTrail : MonoBehaviour
         public float erodeSpeed, erodeSharp, edgeWidth, edgeGlow, highlight;
     }
     [Serializable] public class Constants { public float erodeBase, erodeAgePow, erodeInner, maskTileV, maskAgeDrift, detailGain, headSoft; }
-    [Serializable] public class Recipe { public int version; public Constants constants; public Layer[] layers; }
+    [Serializable] public class TailOut { public bool on; public float durationS = .08f; }
+    [Serializable] public class HeadCut { public bool on; public float lengthM = .22f, rampS = .04f, ragged = .85f, blurLod = 2.5f, extraSoftness = .18f, fade = .5f, noiseTileX = 2.5f, tailTip; }
+    [Serializable] public class Dissolve { public bool on; public float start = .4f, softness = .12f, edgeGlow, edgeWidth = .06f; public float[] edgeColor; }
+    [Serializable] public class Finish { public TailOut tailOut = new TailOut(); public HeadCut headCut = new HeadCut(); public Dissolve dissolve = new Dissolve(); }
+    [Serializable] public class Recipe { public int version; public Constants constants; public Layer[] layers; public Finish finish; }
 
     public TextAsset recipe;
     public Transform hilt, tip;
@@ -30,16 +34,17 @@ public class XsxbSlashTrail : MonoBehaviour
     [Tooltip("Multiplies every layer width. Recipe widths assume a ~1 m blade; use your blade length in metres")] public float widthScale = 1f;
     [Range(0, 2)] public int debugMode;
     public int baseRenderQueue = 3000;
+    [Tooltip("How a stroke ends (docs/SPEC.md 4c). Filled from recipe.finish by Init (missing = all off); edit afterwards to override")] public Finish finish = new Finish();
 
-    class Sample { public Vector3 tip, dir; public float t, dist; public int swing; }
+    class Sample { public Vector3 tip, dir; public float t, dist, f = 1; public int swing; }
     struct Key { public Vector3 tip, hilt; public float t; }
     class Run { public Layer p; public Material mat; public Mesh mesh; public GameObject go; }
     readonly List<Run> runs = new List<Run>();
     readonly List<Sample> samples = new List<Sample>();   // shared by all layers; each layer draws the part younger than its life
     readonly List<Key> keys = new List<Key>();             // last frame poses of the current swing (Catmull-Rom control points)
     int provStart = -1; float provDist;                   // samples of the newest segment are provisional until the next frame
-    Key prevKey; bool wasSwinging, hasPrev; float dist, maxLife; int swingId;
-    readonly List<Vector3> pos = new List<Vector3>(); readonly List<Vector2> uv0 = new List<Vector2>(), uv1 = new List<Vector2>(); readonly List<int> idx = new List<int>();
+    Key prevKey; bool wasSwinging, hasPrev; float dist, maxLife, tailStart = -1, sampleDt = 1f / 60; int swingId;
+    readonly List<Vector3> pos = new List<Vector3>(); readonly List<Vector2> uv0 = new List<Vector2>(), uv1 = new List<Vector2>(); readonly List<Vector3> uv2 = new List<Vector3>(); readonly List<int> headIdx = new List<int>(); readonly List<int> idx = new List<int>();
 
     void Start() { if (runs.Count == 0) Init(); }
 
@@ -47,6 +52,7 @@ public class XsxbSlashTrail : MonoBehaviour
     public void Init()
     {
         var r = JsonUtility.FromJson<Recipe>(recipe.text);
+        finish = r.finish ?? new Finish();   // missing = all off
         for (int i = 0; i < r.layers.Length; i++)
         {
             var p = r.layers[i];
@@ -66,6 +72,7 @@ public class XsxbSlashTrail : MonoBehaviour
                 m.SetFloat("_ErodeBase", c.erodeBase); m.SetFloat("_ErodeAgePow", c.erodeAgePow); m.SetFloat("_ErodeInner", c.erodeInner);
                 m.SetFloat("_MaskTileV", c.maskTileV); m.SetFloat("_MaskAgeDrift", c.maskAgeDrift); m.SetFloat("_DetailGain", c.detailGain); m.SetFloat("_HeadSoft", c.headSoft);
             }
+            SetFinish(m);
             var mesh = new Mesh { name = "XsxbSlashTrail_" + p.name }; mesh.MarkDynamic();
             var go = new GameObject("XsxbSlashTrail_" + p.name) { hideFlags = HideFlags.DontSave };   // not parented: vertices are world space
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -73,6 +80,12 @@ public class XsxbSlashTrail : MonoBehaviour
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mr.receiveShadows = false; go.layer = gameObject.layer;
             runs.Add(new Run { p = p, mat = m, mesh = mesh, go = go }); maxLife = Mathf.Max(maxLife, p.lifeS);
         }
+    }
+    void SetFinish(Material m)
+    {
+        var h = finish.headCut; var d = finish.dissolve;
+        m.SetFloat("_DissSoft", d.softness); m.SetFloat("_HeadSoftExtra", h.extraSoftness); m.SetFloat("_HeadBlur", h.blurLod); m.SetFloat("_HeadNoiseTile", h.noiseTileX);
+        m.SetFloat("_DissEdgeGlow", d.edgeGlow); m.SetFloat("_DissEdgeW", d.edgeWidth); m.SetVector("_DissEdgeColor", d.edgeColor != null ? V(d.edgeColor) : new Vector4(.58f, .32f, .06f, 0));
     }
     static Vector4 V(float[] a) => a != null && a.Length >= 3 ? new Vector4(a[0], a[1], a[2], 0) : Vector4.zero;
 
@@ -83,7 +96,13 @@ public class XsxbSlashTrail : MonoBehaviour
     {
         dt = Mathf.Max(dt, 1e-5f);
         var cur = new Key { tip = tip.position, hilt = hilt.position, t = now };
-        bool swinging = emitting && hasPrev && (cur.tip - prevKey.tip).magnitude / dt > minTipSpeed;
+        bool on = emitting && hasPrev && (cur.tip - prevKey.tip).magnitude / dt > minTipSpeed;
+        sampleDt = dt;
+        var to = finish.tailOut;
+        if (on) tailStart = -1;
+        else if (wasSwinging && to.on && to.durationS > 0 && tailStart < 0) tailStart = prevKey.t;   // window just closed: tail out
+        bool swinging = on || (tailStart >= 0 && prevKey.t - tailStart < to.durationS);
+        if (!swinging) tailStart = -1;
         if (swinging)
         {
             if (!wasSwinging) { swingId++; dist = 0; keys.Clear(); keys.Add(prevKey); AddSample(prevKey.tip, prevKey.hilt, prevKey.t); provStart = -1; }
@@ -102,7 +121,7 @@ public class XsxbSlashTrail : MonoBehaviour
         wasSwinging = swinging; prevKey = cur; hasPrev = true;
         int old = 0; while (old < samples.Count && now - samples[old].t > maxLife) old++;
         if (old > 0) { samples.RemoveRange(0, old); if (provStart >= 0) provStart = Mathf.Max(0, provStart - old); }
-        foreach (var r in runs) { r.mat.SetFloat("_Debug", debugMode); r.mat.SetFloat("_TrailTime", now); Build(r, now); }
+        foreach (var r in runs) { SetFinish(r.mat); r.mat.SetFloat("_Debug", debugMode); r.mat.SetFloat("_TrailTime", now); Build(r, now); }
     }
     // Hermite segment a -> b. Tangents: Catmull-Rom (neighbour difference / 2) where the neighbour exists, else the chord.
     void Segment(Key a, Key b, bool hasBefore, Key before, bool hasAfter, Key after)
@@ -130,19 +149,37 @@ public class XsxbSlashTrail : MonoBehaviour
     }
     void AddSample(Vector3 t, Vector3 h, float time)
     {
-        samples.Add(new Sample { tip = t, dir = (t - h).normalized, t = time, dist = dist, swing = swingId });
+        float f = 1;   // tail-out fade (alpha only)
+        if (tailStart >= 0 && time > tailStart) f = .5f + .5f * Mathf.Cos(Mathf.PI * Mathf.Clamp01((time - tailStart) / Mathf.Max(finish.tailOut.durationS, 1e-3f)));
+        samples.Add(new Sample { tip = t, dir = (t - h).normalized, t = time, dist = dist, swing = swingId, f = f });
     }
     void Build(Run r, float now)
     {
         float life = Mathf.Max(0.02f, r.p.lifeS);
         int first = 0; while (first < samples.Count && now - samples[first].t > life) first++;
-        pos.Clear(); uv0.Clear(); uv1.Clear(); idx.Clear();
+        pos.Clear(); uv0.Clear(); uv1.Clear(); uv2.Clear(); idx.Clear();
         float oldest = 1;
+        var hc = finish.headCut; var ds = finish.dissolve;
+        headIdx.Clear(); for (int i = 0; i < samples.Count; i++) headIdx.Add(0);   // newest sample of each stroke
+        for (int i = samples.Count - 1, hd = i; i >= first; i--) { if (i < samples.Count - 1 && samples[i + 1].swing != samples[i].swing) hd = i; headIdx[i] = hd; }
         for (int i = first; i < samples.Count; i++)
         {
-            var s = samples[i]; int j = i - first; float age = Mathf.Clamp01((now - s.t) / life), w = r.p.widthM * widthScale * (1 - r.p.taper * age);
+            var s = samples[i]; int j = i - first; float age = Mathf.Clamp01((now - s.t) / life);
             if (j == 0 || samples[i - 1].swing != s.swing) oldest = Mathf.Max(age, 1e-3f);   // first sample of a stroke = its oldest
             float xu = fillTexture ? Mathf.Min(1, age / oldest) : age;
+            // finish (SPEC 4c): TEXCOORD2 = (alpha multiplier, dissolve progress, head weight); the width never changes at the head
+            float fa = s.f, hr = 0, wm = 1;
+            if (hc.on)
+            {
+                var hs = samples[headIdx[i]];
+                float k = Mathf.Clamp01((now - hs.t - sampleDt * .5f) / Mathf.Max(hc.rampS, 1e-3f));
+                hr = Mathf.Max(k * (1 - Mathf.SmoothStep(0, 1, (hs.dist - s.dist) / Mathf.Max(hc.lengthM, 1e-4f))), 1 - fa);
+                fa *= 1 - hc.fade * hr;
+                if (hc.tailTip > 0) wm = Mathf.SmoothStep(0, 1, (1 - Mathf.Min(1, age / oldest)) / hc.tailTip);
+            }
+            float prog = Mathf.Max(ds.on ? Mathf.Clamp01((age - ds.start) / Mathf.Max(1 - ds.start, 1e-3f)) : 0, hc.on ? hc.ragged * hr : 0);
+            uv2.Add(new Vector3(fa, prog, hr)); uv2.Add(new Vector3(fa, prog, hr));
+            float w = r.p.widthM * widthScale * (1 - r.p.taper * age) * wm;
             pos.Add(s.tip - s.dir * w); uv0.Add(new Vector2(age, 0)); uv1.Add(new Vector2(s.dist, xu));   // inner
             pos.Add(s.tip);             uv0.Add(new Vector2(age, 1)); uv1.Add(new Vector2(s.dist, xu));   // outer
             if (j > 0 && samples[i - 1].swing == s.swing)
@@ -151,7 +188,7 @@ public class XsxbSlashTrail : MonoBehaviour
                 idx.Add(a); idx.Add(b); idx.Add(a + 1); idx.Add(a + 1); idx.Add(b); idx.Add(b + 1);
             }
         }
-        r.mesh.Clear(); r.mesh.SetVertices(pos); r.mesh.SetUVs(0, uv0); r.mesh.SetUVs(1, uv1); r.mesh.SetTriangles(idx, 0); r.mesh.RecalculateBounds();
+        r.mesh.Clear(); r.mesh.SetVertices(pos); r.mesh.SetUVs(0, uv0); r.mesh.SetUVs(1, uv1); r.mesh.SetUVs(2, uv2); r.mesh.SetTriangles(idx, 0); r.mesh.RecalculateBounds();
     }
     void OnDestroy() { foreach (var r in runs) { Kill(r.go); Kill(r.mesh); Kill(r.mat); } runs.Clear(); }
     static void Kill(Object o) { if (!o) return; if (Application.isPlaying) Destroy(o); else DestroyImmediate(o); }

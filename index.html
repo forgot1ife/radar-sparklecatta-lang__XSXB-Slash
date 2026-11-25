@@ -824,8 +824,8 @@ const _q=new THREE.Quaternion();
 function bladeDir(deg){_q.setFromAxisAngle(AX,deg*Math.PI/180);return E0.clone().applyQuaternion(_q);}
 
 // ---------- ribbon layer ----------
-const VS=`attribute float aDist,aU;varying vec2 vUv;varying float vDist,vU;void main(){vUv=uv;vDist=aDist;vU=aU;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
-const FS=`precision highp float;varying vec2 vUv;varying float vDist,vU;
+const VS=`attribute float aDist,aU;attribute vec3 aFin;varying vec2 vUv;varying float vDist,vU;varying vec3 vFin;void main(){vUv=uv;vDist=aDist;vU=aU;vFin=aFin;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
+const FS=`precision highp float;varying vec2 vUv;varying float vDist,vU;varying vec3 vFin;uniform float dissSoft,dissEdge,dissEdgeW,dissTile,headBlur,headSoft2;uniform vec3 dissEdgeColor;
 uniform sampler2D shapeT,maskT,hlT;uniform vec3 color,edgeColor,hlColor;uniform float time,alpha,hdr,narrow,maskTile,maskPan,maskAmt,erodeAmt,erodeSharp,edgeW,edgeGlow,hlAmt;uniform sampler2D turbT,gnawT;uniform float turbAmt,turbTile,ageAmt,gnawAmt,gnawPan,gnawTile,gnawBlur,maskBlur,hlAlpha;uniform vec2 shapeOff,hlOff,maskOff,gnawOff;uniform vec3 oldTint;uniform int additive,dbg;
 void main(){float x=vUv.x,v=vUv.y,xu=vU;float sv=1.-(1.-v)*(1.+narrow*x);
  if(turbAmt>0.){float tn=texture2D(turbT,vec2(vDist*turbTile+time*.5,v*1.7+x*.4)).r-.5;sv+=tn*turbAmt;xu=clamp(xu+tn*turbAmt*.3,0.,1.);}
@@ -837,8 +837,11 @@ void main(){float x=vUv.x,v=vUv.y,xu=vU;float sv=1.-(1.-v)*(1.+narrow*x);
  float gk=1.;if(gnawAmt>0.){float gw=texture2D(gnawT,vec2(vDist*gnawTile+time*gnawPan,v*.8)+gnawOff,gnawBlur).r;float gs=.04+gnawBlur*.03;gk=smoothstep(gnawAmt-gs,gnawAmt+gs,gw);}
  float a=clamp(shp*det*keep*alpha*smoothstep(0.,.005,xu),0.,1.);
  if(hlAlpha>0.)a=max(a,clamp(hl*hlAmt,0.,1.)*keep*alpha*hlAlpha*smoothstep(0.,.005,xu));
- a*=gk;
+ a*=gk*vFin.x;
  vec3 c=color*hdr+edgeColor*edge*edgeGlow+hlColor*hl*hlAmt;
+ if(vFin.y>0.){float p=vFin.y,h=dissSoft+vFin.z*headSoft2,n=texture2D(maskT,vec2(vDist*dissTile,v*.8)+maskOff,vFin.z*headBlur).r,q=n+2.*p-1.;
+  float dz=smoothstep(clamp(p-h,0.,1.),clamp(p+h,0.,1.),q);float de=smoothstep(p-h-dissEdgeW,p-h,q)*(1.-dz)*clamp(p*8.,0.,1.);
+  a*=1.-dz;c+=dissEdgeColor*de*dissEdge;}
  c+=(oldTint-color)*hdr*smoothstep(.2,.95,x)*ageAmt;
  if(dbg==1){gl_FragColor=vec4(xu,v,0.,1.);return;}if(dbg==2){gl_FragColor=vec4(color,alpha);return;}
  if(additive==1)gl_FragColor=vec4(c*a,1.);else gl_FragColor=vec4(c,a);}`;
@@ -853,12 +856,14 @@ function makeLayer(p){
   g.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(MAXS*2*2),2).setUsage(THREE.DynamicDrawUsage));
   g.setAttribute('aDist',new THREE.BufferAttribute(new Float32Array(MAXS*2),1).setUsage(THREE.DynamicDrawUsage));
   g.setAttribute('aU',new THREE.BufferAttribute(new Float32Array(MAXS*2),1).setUsage(THREE.DynamicDrawUsage));
+  g.setAttribute('aFin',new THREE.BufferAttribute(new Float32Array(MAXS*2*3),3).setUsage(THREE.DynamicDrawUsage));
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(MAXS*6),1).setUsage(THREE.DynamicDrawUsage));
   const mat=new THREE.ShaderMaterial({vertexShader:VS,fragmentShader:FS,transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{
     shapeT:{value:white},maskT:{value:white},hlT:{value:black},color:{value:new THREE.Color()},edgeColor:{value:new THREE.Color()},hlColor:{value:new THREE.Color()},
     time:{value:0},alpha:{value:1},hdr:{value:1},narrow:{value:.6},maskTile:{value:.6},maskPan:{value:-.35},maskAmt:{value:.5},erodeAmt:{value:.85},erodeSharp:{value:6},
     edgeW:{value:.08},edgeGlow:{value:0},hlAmt:{value:0},additive:{value:0},dbg:{value:0},
     turbT:{value:TURB},turbAmt:{value:0},turbTile:{value:2.2},ageAmt:{value:0},oldTint:{value:new THREE.Color()},
+    dissSoft:{value:.12},dissTile:{value:1},headBlur:{value:0},headSoft2:{value:0},dissEdge:{value:0},dissEdgeW:{value:.06},dissEdgeColor:{value:new THREE.Color()},
     gnawT:{value:white},gnawAmt:{value:0},gnawPan:{value:0},gnawTile:{value:1},gnawBlur:{value:0},maskBlur:{value:0},hlAlpha:{value:0},
     shapeOff:{value:new THREE.Vector2()},hlOff:{value:new THREE.Vector2()},maskOff:{value:new THREE.Vector2()},gnawOff:{value:new THREE.Vector2()}}});
   L.mesh=new THREE.Mesh(g,mat);L.mesh.frustumCulled=false;scene.add(L.mesh);L.samples=[];
@@ -880,20 +885,39 @@ function syncLayer(L){
   u.additive.value=L.blend==='glow'||rf?1:0;
   const m=L.mesh.material;m.blending=L.blend==='glow'||rf?THREE.AdditiveBlending:THREE.NormalBlending;m.needsUpdate=true;bindTex(L);
 }
+// ---------- 收尾 (finish): how a stroke ends. All three are off under ?rec (old captures stay pixel-identical) ----------
+// tail : after the attack window closes the trail keeps following the blade for tailS seconds; those new samples get f = 1 -> 0 (cosine),
+//        alpha is multiplied by f (width is NOT changed). Hit windows are not changed.
+// ends : 头部切口. Once a stroke stops growing (ramp headRampS), head weight hr = 1 - smoothstep(distFromHead / headM) (also >= 1-f);
+//        alpha *= 1 - headAlpha*hr; dissolve progress >= dissHead*hr with a blurred noise lookup (LOD bias headBlur*hr) and softer edge
+//        (dissSoft + headSoft*hr) -> the straight cut becomes ragged, locally blurred and fainter. tailTip (default 0) narrows the oldest end.
+// diss : noise dissolve: progress p = max(sat((age-start)/(1-start)), head part); keep = 1 - smoothstep(sat(p-h), sat(p+h), n+2p-1),
+//        n = mask at (dist*maskTilePerM*headTile, V*0.8) + mask offset
+const FIN={tail:REC?0:1,tailS:.08,ends:REC?0:1,headM:.22,headRampS:.04,tailTip:0,diss:REC?0:1,dissStart:.4,dissSoft:.12,dissHead:.85,headTile:2.5,headAlpha:.5,headBlur:2.5,headSoft:.18,dissEdge:0,dissEdgeW:.06,dissEdgeColor:'#c99a45',cut:0};
+window.BTG_FIN=FIN;
+const sat=x=>x<0?0:x>1?1:x,smooth01=x=>{x=sat(x);return x*x*(3-2*x);};
 function buildRibbon(L,now){
   const life=Math.max(.02,+L.life),S0=L.samples;while(S0.length&&now-S0[0].t>life)S0.shift();
-  const g=L.mesh.geometry,P=g.attributes.position.array,U=g.attributes.uv.array,D=g.attributes.aDist.array,AU=g.attributes.aU.array,I=g.index.array;
+  const g=L.mesh.geometry,P=g.attributes.position.array,U=g.attributes.uv.array,D=g.attributes.aDist.array,AU=g.attributes.aU.array,FA=g.attributes.aFin.array,I=g.index.array;
   let n=0,ni=0,old=1;const w=L.width/100*WS;
-  for(let i=0;i<S0.length&&n<MAXS;i++){const s=S0[i],age=(now-s.t)/life,wi=w*(1-L.taper*age);
+  const hd=new Int32Array(S0.length);for(let i=S0.length-1,h=i;i>=0;i--){hd[i]=h;if(S0[i].brk||i===0)h=i-1;}   // newest sample of each stroke
+  for(let i=0;i<S0.length&&n<MAXS;i++){const s=S0[i],age=(now-s.t)/life;
     if(i===0||s.brk)old=Math.max(age,1e-3);   // first sample of a stroke = its oldest
-    AU[n*2]=AU[n*2+1]=+L.uvFill?Math.min(1,age/old):age;
+    const xu=+L.uvFill?Math.min(1,age/old):age;AU[n*2]=AU[n*2+1]=xu;
+    let fa=s.f==null?1:s.f,wm=1,hr=0;   // width never changes at the head (a narrowing head looks wrong)
+    if(FIN.ends){const H=S0[hd[i]],k=sat((now-H.t-1.5/240)/FIN.headRampS);hr=k*(1-smooth01((H.dist-s.dist)/Math.max(1e-4,FIN.headM)));
+      hr=Math.max(hr,1-fa);fa*=1-FIN.headAlpha*hr;   // 头部切口: lower alpha near the head (blur + ragged edge in the shader)
+      if(FIN.tailTip>0)wm=smooth01((1-Math.min(1,age/old))/FIN.tailTip);}
+    const dp=Math.max(FIN.diss?sat((age-FIN.dissStart)/Math.max(1e-3,1-FIN.dissStart)):0,FIN.ends?FIN.dissHead*hr:0);
+    FA[n*6]=FA[n*6+3]=fa;FA[n*6+1]=FA[n*6+4]=dp;FA[n*6+2]=FA[n*6+5]=FIN.ends?hr:0;
+    const wi=w*(1-L.taper*age)*wm;
     const tip=s.tip,inn=tip.clone().addScaledVector(s.dir,-wi);
     P.set([inn.x,inn.y,inn.z,tip.x,tip.y,tip.z],n*6);U.set([age,0,age,1],n*4);D[n*2]=D[n*2+1]=s.dist;
     if(i>0&&!s.brk){const a=(n-1)*2,b=n*2;I.set([a,b,a+1,a+1,b,b+1],ni);ni+=6;}n++;}
-  g.setDrawRange(0,ni);g.attributes.position.needsUpdate=g.attributes.uv.needsUpdate=g.attributes.aDist.needsUpdate=g.attributes.aU.needsUpdate=true;g.index.needsUpdate=true;
+  g.setDrawRange(0,ni);g.attributes.position.needsUpdate=g.attributes.uv.needsUpdate=g.attributes.aDist.needsUpdate=g.attributes.aU.needsUpdate=g.attributes.aFin.needsUpdate=true;g.index.needsUpdate=true;
 }
 // ---------- loop: sample the swing at 240 Hz in sim time ----------
-let simT=0,lastSample=0,lastK=-1,distAcc=0,prevTip=null,clock=performance.now();
+let simT=0,lastSample=0,lastK=-1,distAcc=0,prevTip=null,lastOnT=-1,lastOnK=-1,winK=-1,winT0=0,clock=performance.now();
 function loop(){
   requestAnimationFrame(loop);if(!ready||window.BTG_tab!==4||REC)return;
   const t=performance.now(),dt=Math.min(.05,(t-clock)/1000);clock=t;
@@ -904,22 +928,28 @@ function advance(){
   const step=1/240;
   while(lastSample+step<=simT){lastSample+=step;const[a,da,k]=swingAngle(lastSample);
     const dir=bladeDir(a),tip=dir.clone().multiplyScalar(W.tip).add(hiltPos(a));
-    const swinging=Math.abs(da)>120;
-    if(swinging){const brk=k!==lastK;if(prevTip&&!brk)distAcc+=tip.distanceTo(prevTip);lastK=k;prevTip=tip;
-      for(const L of layers)L.samples.push({t:lastSample,tip,dir,dist:distAcc,brk:brk&&L.samples.length>0?true:false});}
+    let swinging=Math.abs(da)>120;let f=1;
+    if(swinging&&k!==winK){winK=k;winT0=lastSample;}
+    if(swinging&&FIN.cut>0&&lastSample-winT0>FIN.cut)swinging=false;   // preview: attack window closes early (blade still moving fast)
+    if(swinging){lastOnT=lastSample;lastOnK=k;}
+    else if(FIN.tail&&lastOnK===k&&lastSample-lastOnT<FIN.tailS)f=.5+.5*Math.cos(Math.PI*(lastSample-lastOnT)/FIN.tailS);   // 延尾: keep following, fading
+    else f=0;
+    if(f>0){const brk=k!==lastK;if(prevTip&&!brk)distAcc+=tip.distanceTo(prevTip);lastK=k;prevTip=tip;
+      for(const L of layers)L.samples.push({t:lastSample,tip,dir,dist:distAcc,brk:brk&&L.samples.length>0?true:false,f});}
     else prevTip=null;}
 }
 function render1(){
   const[a]=swingAngle(simT);blade.position.copy(hiltPos(a));blade.quaternion.setFromAxisAngle(AX,a*Math.PI/180);blade.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),.25));
-  for(const L of layers){buildRibbon(L,simT);L.mesh.material.uniforms.time.value=simT;}
+  const dec=new THREE.Color(FIN.dissEdgeColor);
+  for(const L of layers){buildRibbon(L,simT);const u=L.mesh.material.uniforms;u.time.value=simT;u.dissSoft.value=FIN.dissSoft;u.dissTile.value=(+L.maskTile||.6)*FIN.headTile;u.headBlur.value=FIN.headBlur;u.headSoft2.value=FIN.headSoft;u.dissEdge.value=L.blend==='refract'?0:FIN.dissEdge;u.dissEdgeW.value=FIN.dissEdgeW;u.dissEdgeColor.value.copy(dec);}
   const gl=+$('glow4').value;bladeGlow.visible=gl>0&&!W.model;bladeGlow.material.color.setRGB(gl,gl*.55,gl*.12);
   scene.background=new THREE.Color($('bg4').value);bloom.strength=+$('bloom4').value;
   controls.update();particlesUpdate(simT);renderRefrMask();composer.render();
   $('info4').textContent=`层 ${layers.length} · 慢放 ×${$('speed4').value} · 拖动旋转 / 滚轮缩放 · 把 glb 拖进来换武器`;
 }
 // debug / capture: jump the simulation to time t (fresh trails) and draw one frame
-function restartSwing(){for(const L of layers)L.samples=[];simT=0;lastSample=0;lastK=-1;distAcc=0;prevTip=null;}
-window.BTG_seek=t=>{for(const L of layers)L.samples=[];simT=0;lastSample=0;lastK=-1;distAcc=0;prevTip=null;$('pause4').checked=true;simT=t;advance();render1();return layers.map(L=>L.samples.length);};
+function restartSwing(){for(const L of layers)L.samples=[];simT=0;lastSample=0;lastK=-1;distAcc=0;prevTip=null;lastOnT=-1;lastOnK=-1;winK=-1;}
+window.BTG_seek=t=>{for(const L of layers)L.samples=[];simT=0;lastSample=0;lastK=-1;distAcc=0;prevTip=null;lastOnT=-1;lastOnK=-1;winK=-1;$('pause4').checked=true;simT=t;advance();render1();return layers.map(L=>L.samples.length);};
 
 // ---------- recording API (?rec=1&w=&h=): full-window preview driven from outside, deterministic ----------
 const REC_PARRY=REC&&new URLSearchParams(location.search).get('mode')==='parry';   // ?rec=1&mode=parry is driven by assets/parry/parry_tab.js
@@ -964,6 +994,7 @@ window.BTG_rec={
   get fxState(){return JSON.parse(JSON.stringify(FX));},
   get weaponInfo(){return {name:W.name,base:W.base,tip:W.tip,widthScale:WS};},
   hilt(t){return hiltPos(swingAngle(t)[0]).toArray();},
+  finish(o){if(o)Object.assign(FIN,o);return FIN;},   // 收尾 settings (off by default under ?rec)
 };
 // ---------- presets (structure only: widths / colours / alphas / lives; all textures are ours) ----------
 const PRESETS=[
@@ -1068,6 +1099,9 @@ function recipeV1(){return {
     uvOffset:{shape:L.shapeOff||[0,0],highlight:L.hlOff||[0,0],mask:L.maskOff||[0,0]},maskBlurLod:+L.maskBlur||0,highlightAlpha:+L.hlAlpha||0,
     gnaw:L.gnawAmt>0?{texture:'textures/gnaw.png',threshold:+L.gnawAmt,panPerS:+L.gnawPan,tilePerM:+L.gnawTile,blurLod:+L.gnawBlur,uvOffset:L.gnawOff||[0,0]}:null,ageColor:{color:linRGB(L.oldColor||'#202126'),colorHex:L.oldColor||'#202126',amount:+L.ageAmt||0}})),
   fx:fxRecipe(),
+  finish:{tailOut:{on:!!FIN.tail,durationS:FIN.tailS,curve:'cosine: f = 0.5 + 0.5 cos(pi * t / durationS)'},
+    headCut:{on:!!FIN.ends,lengthM:FIN.headM,rampS:FIN.headRampS,ragged:FIN.dissHead,blurLod:FIN.headBlur,extraSoftness:FIN.headSoft,fade:FIN.headAlpha,noiseTileX:FIN.headTile,tailTip:FIN.tailTip},
+    dissolve:{on:!!FIN.diss,start:FIN.dissStart,softness:FIN.dissSoft,headAmount:FIN.dissHead,edgeGlow:FIN.dissEdge,edgeWidth:FIN.dissEdgeW,edgeColor:linRGB(FIN.dissEdgeColor),noise:'mask texture at (dist*maskTilePerM*1.3, V*0.8) + mask uvOffset, no pan'}},
   preview:{background:$('bg4').value,bloomStrength:+$('bloom4').value,bloomThreshold:1,swingDurationS:+$('dur4').value,bladeLengthM:+W.tip.toFixed(4),hiltOffsetM:+W.base.toFixed(4),weapon:W.name,previewImage:'preview.png',previewTimeS:+(+$('dur4').value*.62).toFixed(3)},
   generator:{shape:S,mask:window.BTG_Q||null}};}
 $('bundle4').onclick=async()=>{
@@ -1322,7 +1356,7 @@ const U={sel:'main',bg:'dark',
   fxs:{sparks:'any',smoke:'any',drops:'any'},
   link:{sparks:1,drops:1,smoke:1}};
 const G={gnaw:null,refr:null};   // generated grey arrays for 啃咬 / 折射
-const ITEMS=[['main','主体'],['gnaw','啃咬'],['diss','溶解'],['hl','高光'],['refr','折射'],['sparks','火星'],['smoke','烟雾'],['drops','液体'],['all','全部']];
+const ITEMS=[['main','主体'],['gnaw','啃咬'],['diss','溶解'],['hl','高光'],['refr','折射'],['sparks','火星'],['smoke','烟雾'],['drops','液体'],['fin','收尾'],['all','全部']];
 const rnd=(a,b)=>a+(b-a)*Math.random(),pick=a=>a[Math.floor(Math.random()*a.length)];
 // particle styles ('' = the original look); 🎲 picks one of these unless a style chip is chosen
 const FXSTY={sparks:[['','飞溅'],['burst','爆散'],['ember','上飘余烬'],['twinkle','星点闪烁']],smoke:[['','散开'],['rise','升腾'],['ground','贴地'],['wisp','拖尾细烟']],
@@ -1396,6 +1430,9 @@ const SNAP={
   gnaw:()=>{const g=G.gnaw,t=G.gnawTex;return {thumb:thumbGrey(g.a,g.w,g.h),restore:()=>{G.gnaw=g;G.gnawTex=t;apply();}};},
   refr:()=>{const g=G.refr,t=G.refrTex,mode=U.refr.mode;return {thumb:thumbGrey(g.a,g.w,g.h),restore:()=>{G.refr=g;G.refrTex=t;U.refr.mode=mode;U.refr.on=1;apply();}};},
   sparks:()=>fxSnap('sparks'),smoke:()=>fxSnap('smoke'),drops:()=>fxSnap('drops'),
+  fin:()=>{const o=JSON.parse(JSON.stringify(FIN)),c=document.createElement('canvas');c.width=120;c.height=50;const x=c.getContext('2d');x.fillStyle='#24262c';x.fillRect(0,0,120,50);
+    x.fillStyle='#e8e4da';x.font='11px sans-serif';x.fillText(`延尾 ${o.tail?o.tailS.toFixed(2)+'s':'关'}`,6,15);x.fillText(`切口 ${o.ends?o.headM.toFixed(2)+'m':'关'}`,6,29);x.fillText(`溶解 ${o.diss?o.dissStart.toFixed(2):'关'}`,6,43);
+    return {thumb:c,restore:()=>{Object.assign(FIN,o);apply();}};},
   all:()=>{const parts=['main','hl','diss','gnaw','refr','sparks','smoke','drops'].map(k=>SNAP[k]()),col=JSON.parse(JSON.stringify({m:[U.main.color,U.main.blend,U.main.hdr],h:U.hl.color,l:U.link}));
     const c=parts[0].thumb,x=c.getContext('2d');x.fillStyle=col.m[0];x.fillRect(0,38,60,12);x.fillStyle=col.h;x.fillRect(60,38,60,12);
     return {thumb:c,restore:()=>{parts.forEach(p=>p.restore());[U.main.color,U.main.blend,U.main.hdr]=col.m;U.hl.color=col.h;Object.assign(U.link,col.l);}};},
@@ -1422,6 +1459,7 @@ const mainCol=h=>{if(U.bg==='light')U.main.blend='ink';U.main.color=U.main.blend
 const hlCol=h=>{U.hl.color=U.bg==='light'?hsl(h,rnd(.85,1),rnd(.4,.5)):hsl(h,rnd(.8,1),rnd(.6,.72));U.hl.amt=+(U.main.blend==='glow'?rnd(.8,1.2):rnd(1.1,1.6)).toFixed(2);};
 RND.colors=()=>{MANUAL_COL=false;const h=Math.random()*360;U.main.blend=Math.random()<.3?'glow':'ink';mainCol(h);hlCol(h+rnd(-50,50));U.link.sparks=U.link.drops=U.link.smoke=1;};
 // 主体 / 高光 random = new texture only, colours stay (user 11-12); 全部 changes the colour scheme (RND.colors)
+RND.fin=()=>{Object.assign(FIN,{tail:1,ends:1,diss:1,tailS:rnd(.05,.14),headM:rnd(.12,.4),dissStart:rnd(.25,.6),dissSoft:rnd(.06,.2),dissHead:rnd(.6,1),headBlur:rnd(1,4),headAlpha:rnd(.3,.7),headSoft:rnd(.08,.3),headTile:rnd(1.5,4)});};
 RND.all=()=>{RND.colors();for(const k of ['diss','gnaw','refr','sparks','smoke','drops']){RND[k]();pushHist(k);}roll();window.BTG_roll3();pushHist('main');pushHist('hl');};
 function pushHist(k){const e=SNAP[k]();HIST[k].unshift(e);if(HIST[k].length>8)HIST[k].pop();HIST[k].on=0;}
 function randomSel(){const k=U.sel;RND[k]();if(k==='smoke'||k==='all')needSmoke().then(()=>{});pushHist(k);setFX({});apply();showHist();restartSwing();}
@@ -1496,6 +1534,14 @@ function linkRow(box,k){const d=document.createElement('div');d.className='qrow'
   fxChips(p,'smoke');const d=details(p,'详细');qslider(d,'数量',o,'count',0,120,1);qslider(d,'浓度',o,'opacity',0,1,.01);qslider(d,'大小',o,'size',.3,4,.05);}
 {const p=panel('drops'),o=()=>FX.drops;qswitch(p,'液体',onOff,o,'on');qcolor(p,'颜色',o,'color',()=>U.link.drops=0);linkRow(p,'drops');qslider(p,'寿命 ×',o,'life',.2,3,.05);
   fxChips(p,'drops');const d=details(p,'详细');qslider(d,'数量',o,'count',0,120,1);qslider(d,'大小',o,'size',.3,4,.05);qslider(d,'速度',o,'speed',.2,3,.05);}
+// 收尾: how a stroke ends after the attack window (延尾淡出 / 两端收尖 / 溶解收尾)
+{const p=panel('fin'),o=()=>FIN;
+  qswitch(p,'延尾淡出',onOff,o,'tail');qslider(p,'延尾时长 s',o,'tailS',.01,.3,.005);
+  qswitch(p,'头部切口',onOff,o,'ends');qslider(p,'切口长度 m',o,'headM',.02,1,.01);qslider(p,'不规则',o,'dissHead',0,1,.01);qslider(p,'模糊',o,'headBlur',0,5,.1);qslider(p,'变淡',o,'headAlpha',0,1,.01);
+  qswitch(p,'溶解收尾',onOff,o,'diss');qslider(p,'开始溶解',o,'dissStart',0,.95,.01);
+  const d=details(p,'详细');qslider(d,'溶解柔和',o,'dissSoft',.01,.4,.01);qslider(d,'切口边柔和',o,'headSoft',0,.5,.01);qslider(d,'切口噪声密度',o,'headTile',.5,8,.1);qslider(d,'尾端收尖',o,'tailTip',0,.8,.01);qslider(d,'头端渐隐速度 s',o,'headRampS',.005,.2,.005);
+  qslider(d,'溶解边亮度',o,'dissEdge',0,4,.05);qcolor(d,'溶解边颜色',o,'dissEdgeColor');qslider(d,'溶解边宽',o,'dissEdgeW',.01,.3,.01);qslider(d,'预览：窗口提前关 s',o,'cut',0,.3,.005);
+  const n=document.createElement('p');n.className='note';n.textContent='攻击窗口结束后刀光的收法。延尾 = 窗口关了还跟刀走一小段并渐隐（伤害判定不变）；头部切口 = 这一刀停止生长后，靠武器的整齐切口变成不规则、局部模糊、变淡的边；溶解 = 消失阶段用溶解图（溶解页）噪声侵蚀。慢放看最清楚。';p.appendChild(n);}
 // 全部: weapon, swing, playback (the same DOM inputs the recipe / recording read)
 {const p=panel('all');const n=document.createElement('p');n.className='note';n.textContent='🎲 = 主体、啃咬、溶解、高光、折射、火星、烟雾、液体全部换一次，并给主体 / 高光换一套配色（火星、烟雾、液体跟着变）。单独随机主体 / 高光只换形状，颜色不变；火星、烟雾、液体的颜色始终跟着主体 / 高光。';p.appendChild(n);
   const cap=document.createElement('div');cap.className='sh';cap.textContent='武器';p.append(cap,$('weap4'),$('wInfo4'));
@@ -1511,7 +1557,7 @@ document.querySelectorAll('#panels4 .shapePre button').forEach(b=>b.addEventList
 document.querySelectorAll('#panels4 .hlPre button').forEach(b=>b.addEventListener('click',()=>{pushHist('hl');showHist();}));
 // ---------- item picker ----------
 ITEMS.forEach(([k,t])=>{const b=document.createElement('button');b.dataset.k=k;b.innerHTML=`${t}<i></i>`;b.onclick=()=>selectItem(k);$('items4').appendChild(b);});
-function isOn(k){return k==='main'||k==='diss'||k==='all'?1:k==='gnaw'?U.gnaw.on:k==='hl'?U.hl.on:k==='refr'?U.refr.on:FX[k].on;}
+function isOn(k){return k==='fin'?(FIN.tail||FIN.ends||FIN.diss):k==='main'||k==='diss'||k==='all'?1:k==='gnaw'?U.gnaw.on:k==='hl'?U.hl.on:k==='refr'?U.refr.on:FX[k].on;}
 function uiMarks(){for(const b of $('items4').children){const k=b.dataset.k;b.classList.toggle('on',k===U.sel);const i=b.querySelector('i');i.classList.toggle('lit',!!isOn(k));i.hidden=k==='all';}}
 function selectItem(k){U.sel=k;for(const q in PN)PN[q].hidden=q!==k;$('rand4').textContent='🎲 随机 · '+ITEMS.find(x=>x[0]===k)[1];uiMarks();showHist();refreshPanel();}
 // ---------- 体积雾 (preview only): wide low-threshold glow around bright parts + exponential distance fog ----------

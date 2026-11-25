@@ -4,11 +4,15 @@
 //   Dist      <- TextureCoordinate (index 1) -> ComponentMask R     float   (metres along the tip path)
 //   XU        <- TextureCoordinate (index 1) -> ComponentMask G     float   (filled U for texture lookups; see bFillTexture)
 //   T         <- Time                                               float
+//   Fin       <- TextureCoordinate (index 2)                        float2  (x = alpha multiplier, y = dissolve progress; finish, SPEC 4c)
+//   FinH      <- TextureCoordinate (index 3) -> ComponentMask R     float   (head weight: blur / softness of the head cut)
 //   ShapeTex, MaskTex, HlTex <- TextureObject parameters (Sampler Type = Linear Color / "Masks", sRGB OFF;
 //                               shape & highlight Tiling = Clamp, mask Tiling = Wrap)
 //   Color, EdgeColor, HlColor <- VectorParameter (linear RGB, feed .rgb)
 //   Alpha, Hdr, WindowNarrow, MaskAmount, MaskTilePerM, MaskPanPerS, ErodeSpeed, ErodeSharp,
 //   EdgeWidth, EdgeGlow, Highlight, Additive, DebugMode  <- ScalarParameter
+//   DissSoft, HeadSoftExtra, HeadBlur, HeadNoiseTile, DissEdgeGlow, DissEdgeW <- ScalarParameter, DissEdgeColor <- VectorParameter
+//   (finish; a material without them still works, the trail then just has no finish)
 // Material: Domain Surface, Shading Model Unlit, Two Sided, Blend Mode Translucent (alpha layers) or Additive (additive layers).
 //   Emissive Color <- result.rgb      Opacity <- result.a
 //   For the additive material the HLSL already multiplies rgb by a and returns a = 1.
@@ -30,4 +34,16 @@ float edge = saturate(1 - mg / max(EdgeWidth, 1e-3)) * keep;
 float hl = sv < 0 ? 0 : Texture2DSample(HlTex, HlTexSampler, float2(xu, 1 - sv)).r;
 float a = saturate(shp * det * keep * Alpha * smoothstep(0, HeadSoft, xu));
 float3 c = Color * Hdr + EdgeColor * edge * EdgeGlow + HlColor * hl * Highlight;
+// finish (SPEC 4c): tail-out / head-cut alpha, then noise dissolve (ragged + blurred near the head)
+a *= Fin.x;
+if (Fin.y > 0)
+{
+	float p = Fin.y, h = DissSoft + FinH * HeadSoftExtra;
+	float n = Texture2DSampleBias(MaskTex, MaskTexSampler, float2(Dist * MaskTilePerM * HeadNoiseTile, v * 0.8), FinH * HeadBlur).r;
+	float q = n + 2 * p - 1;
+	float dz = smoothstep(saturate(p - h), saturate(p + h), q);
+	float de = smoothstep(p - h - DissEdgeW, p - h, q) * (1 - dz) * saturate(p * 8);
+	a *= 1 - dz;
+	c += DissEdgeColor * de * DissEdgeGlow;
+}
 return Additive > 0.5 ? float4(c * a, 1) : float4(c, a);

@@ -22,6 +22,18 @@ Make game **slash trails** and **parry VFX + SFX** in the browser: roll random s
 ![Spark, smoke and liquid styles](docs/media/readme/styles_fx.jpg)
 ![Water-ripple refraction](docs/media/readme/refraction_ripple.jpg)
 
+### Finish: how a stroke ends (new, 2026-11-25)
+
+Before, when the attack window closed, the weapon end of the trail was a straight, clean cut that stayed until the trail faded. The new 收尾 (finish) panel has three parts, each with its own switch and sliders:
+
+- **Tail-out**: after the window closes the trail follows the blade a little longer (0.08 s by default) and fades out. Hit detection is not changed.
+- **Head cut**: once the stroke stops growing, the part at the weapon (0.22 m by default) gets a ragged, locally blurred, fainter edge. The width does not change.
+- **Dissolve**: the trail is eaten by the dissolve-map noise as it disappears.
+
+![Finish before / after](docs/media/readme/finish_compare.jpg)
+
+recipe.json now has a `finish` block and all three engine scripts support it (formulas: [docs/SPEC.md](docs/SPEC.md) section 4c). Old recipes without `finish` look the same as before.
+
 ## Parry (new)
 
 Open the **格挡 (Parry)** tab: two blades clash (wind-up → bite + hit-stop → blade tremor → bounce off), in two tiers, **normal parry** and **perfect parry**. 🎲 rolls both tiers at once (perfect is stronger); manual edits change only the current tier.

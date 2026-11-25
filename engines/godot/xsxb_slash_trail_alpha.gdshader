@@ -3,7 +3,7 @@ render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabl
 #include "res://addons/xsxb_slash/xsxb_slash_trail.gdshaderinc"
 
 void fragment() {
-	vec4 r = xsxb_slash_trail(UV, UV2.x, TIME, UV2.y);
+	vec4 r = xsxb_slash_trail(UV, UV2.x, TIME, UV2.y, COLOR.rgb);
 	ALBEDO = r.rgb;
 	ALPHA = debug_mode > 0 ? 1.0 : r.a;
 }

@@ -41,12 +41,35 @@ var _dist := 0.0
 var _swing := 0
 var _time := 0.0
 var _max_life := 0.0
+# finish (docs/SPEC.md 4c), read from recipe.finish (missing = off). Edit these after _ready to override.
+var tail_out := false
+var tail_out_s := 0.08
+var head_cut := false
+var head_len_m := 0.22
+var head_ramp_s := 0.04
+var head_ragged := 0.85
+var head_fade := 0.5
+var tail_tip := 0.0
+var dissolve := false
+var diss_start := 0.4
+var _tail_start := -1.0
+var _sample_dt := 1.0 / 60.0
+const FINMAP := {"softness": "diss_soft", "edgeGlow": "diss_edge_glow", "edgeWidth": "diss_edge_w"}
+const HEADMAP := {"blurLod": "head_blur", "extraSoftness": "head_soft_extra", "noiseTileX": "head_noise_tile"}
 
 func _ready() -> void:
 	if Engine.is_editor_hint() or recipe_path == "":
 		return
 	var r: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(recipe_path))
 	var consts: Dictionary = r.get("constants", {})
+	var fin: Dictionary = r.get("finish", {})
+	var fto: Dictionary = fin.get("tailOut", {})
+	var fhc: Dictionary = fin.get("headCut", {})
+	var fds: Dictionary = fin.get("dissolve", {})
+	tail_out = fto.get("on", false); tail_out_s = float(fto.get("durationS", tail_out_s))
+	head_cut = fhc.get("on", false); head_len_m = float(fhc.get("lengthM", head_len_m)); head_ramp_s = float(fhc.get("rampS", head_ramp_s))
+	head_ragged = float(fhc.get("ragged", head_ragged)); head_fade = float(fhc.get("fade", head_fade)); tail_tip = float(fhc.get("tailTip", tail_tip))
+	dissolve = fds.get("on", false); diss_start = float(fds.get("start", diss_start))
 	var i := 0
 	for p in r["layers"]:
 		var mat := ShaderMaterial.new()
@@ -63,6 +86,11 @@ func _ready() -> void:
 		for k in CONSTMAP:
 			if consts.has(k): mat.set_shader_parameter(CONSTMAP[k], float(consts[k]))
 		mat.set_shader_parameter("debug_mode", debug_mode)
+		for k in FINMAP:
+			if fds.has(k): mat.set_shader_parameter(FINMAP[k], float(fds[k]))
+		for k in HEADMAP:
+			if fhc.has(k): mat.set_shader_parameter(HEADMAP[k], float(fhc[k]))
+		if fds.has("edgeColor"): mat.set_shader_parameter("diss_edge_color", _v3(fds["edgeColor"]))
 		var mesh := ImmediateMesh.new()
 		var inst := MeshInstance3D.new()
 		inst.mesh = mesh
@@ -100,7 +128,15 @@ func _tick() -> void:
 	_time += delta
 	var dt: float = max(delta, 1e-5)
 	var cur := {"tip": tip.global_position, "hilt": hilt.global_position, "t": _time}
-	var swinging: bool = emitting and _has_prev and cur.tip.distance_to(_prev_key.tip) / dt > min_tip_speed
+	var on: bool = emitting and _has_prev and cur.tip.distance_to(_prev_key.tip) / dt > min_tip_speed
+	_sample_dt = dt
+	if on:
+		_tail_start = -1.0
+	elif _was and tail_out and tail_out_s > 0.0 and _tail_start < 0.0:
+		_tail_start = _prev_key.t   # window just closed: keep following the blade, fading out
+	var swinging: bool = on or (_tail_start >= 0.0 and _prev_key.t - _tail_start < tail_out_s)
+	if not swinging:
+		_tail_start = -1.0
 	if swinging:
 		if not _was:
 			_swing += 1
@@ -163,7 +199,10 @@ func _herm(p0: Vector3, m0: Vector3, p1: Vector3, m1: Vector3, f: float) -> Vect
 	return (2 * f3 - 3 * f2 + 1) * p0 + (f3 - 2 * f2 + f) * m0 + (-2 * f3 + 3 * f2) * p1 + (f3 - f2) * m1
 
 func _add(t: Vector3, h: Vector3, time: float) -> void:
-	_samples.append({"tip": t, "dir": (t - h).normalized(), "t": time, "dist": _dist, "swing": _swing})
+	var f := 1.0   # tail-out fade (alpha only)
+	if _tail_start >= 0.0 and time > _tail_start:
+		f = 0.5 + 0.5 * cos(PI * clampf((time - _tail_start) / maxf(tail_out_s, 1e-3), 0.0, 1.0))
+	_samples.append({"tip": t, "dir": (t - h).normalized(), "t": time, "dist": _dist, "swing": _swing, "f": f})
 
 ## Stretch shape/highlight textures over the whole visible trail (U = age / oldest age of the stroke).
 ## Off = U is plain age, which cuts the texture while the trail is still growing.
@@ -183,6 +222,13 @@ func _build(r: Dictionary) -> void:
 	var w0: float = float(r.p["widthM"]) * width_scale
 	var taper: float = float(r.p["taper"])
 	var oldest := 1.0
+	var head := []   # newest sample of each stroke
+	head.resize(s.size())
+	var hd := s.size() - 1
+	for i in range(s.size() - 1, -1, -1):
+		if i < s.size() - 1 and s[i + 1].swing != s[i].swing:
+			hd = i
+		head[i] = s[hd]
 	for i in range(1, s.size()):
 		var a: Dictionary = s[i - 1]
 		var b: Dictionary = s[i]
@@ -190,17 +236,30 @@ func _build(r: Dictionary) -> void:
 			oldest = maxf(clampf((_time - a.t) / life, 0.0, 1.0), 1e-3)   # first sample of a stroke = its oldest
 		if a.swing != b.swing:
 			continue
-		var qa := _quad(a, life, w0, taper, oldest)
-		var qb := _quad(b, life, w0, taper, oldest)
+		var qa := _quad(a, life, w0, taper, oldest, head[i - 1])
+		var qb := _quad(b, life, w0, taper, oldest, head[i])
 		# two triangles: a.inner, b.inner, a.outer / a.outer, b.inner, b.outer
 		for v in [qa[0], qb[0], qa[1], qa[1], qb[0], qb[1]]:
 			mesh.surface_set_uv(v[1])
 			mesh.surface_set_uv2(v[2])
+			mesh.surface_set_color(v[3])
 			mesh.surface_add_vertex(v[0])
 	mesh.surface_end()
 
-func _quad(smp: Dictionary, life: float, w0: float, taper: float, oldest: float) -> Array:
+func _quad(smp: Dictionary, life: float, w0: float, taper: float, oldest: float, hs: Dictionary) -> Array:
 	var age := clampf((_time - smp.t) / life, 0.0, 1.0)
-	var w := w0 * (1.0 - taper * age)
+	# finish (SPEC 4c): COLOR = (alpha multiplier, dissolve progress, head weight); the width never changes at the head
+	var fa: float = smp.f
+	var hr := 0.0
+	var wm := 1.0
+	if head_cut:
+		var k := clampf((_time - hs.t - _sample_dt * 0.5) / maxf(head_ramp_s, 1e-3), 0.0, 1.0)
+		hr = maxf(k * (1.0 - smoothstep(0.0, 1.0, (hs.dist - smp.dist) / maxf(head_len_m, 1e-4))), 1.0 - fa)
+		fa *= 1.0 - head_fade * hr
+		if tail_tip > 0.0:
+			wm = smoothstep(0.0, 1.0, (1.0 - minf(1.0, age / oldest)) / tail_tip)
+	var prog := maxf(clampf((age - diss_start) / maxf(1.0 - diss_start, 1e-3), 0.0, 1.0) if dissolve else 0.0, head_ragged * hr if head_cut else 0.0)
+	var fc := Color(fa, prog, hr, 1.0)
+	var w := w0 * (1.0 - taper * age) * wm
 	var d := Vector2(smp.dist, minf(1.0, age / oldest) if fill_texture else age)   # y = filled U
-	return [[smp.tip - smp.dir * w, Vector2(age, 0.0), d], [smp.tip, Vector2(age, 1.0), d]]
+	return [[smp.tip - smp.dir * w, Vector2(age, 0.0), d, fc], [smp.tip, Vector2(age, 1.0), d, fc]]

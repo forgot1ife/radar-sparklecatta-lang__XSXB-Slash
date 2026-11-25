@@ -24,6 +24,8 @@ Do not invent ad-hoc shaders or giant opaque billboards: use the exact reference
 - **Unity (Built-in / URP)**: Copy `engines/unity/XsxbSlashTrail.shader` and `XsxbSlashTrail.cs` into `Assets/XsxbSlash/`. Ensure Linear Color Space. Add `XsxbSlashTrail`, assign `recipe` (`TextAsset`), `hilt`, `tip`, the 3 textures, and shader `XSXB-Slash/Layer`.
 - **Unreal Engine 5**: Copy `engines/unreal/XsxbSlashTrailComponent.h/.cpp` into a C++ module (`"ProceduralMeshComponent", "Json"` in `Build.cs`). Build one Translucent and one Additive Unlit Two-Sided material using a Custom node containing `XsxbSlashLayer.hlsl`. Attach `UXsxbSlashTrailComponent` to the weapon mesh and set `HiltSocket`, `TipSocket`, `RecipeFile`, textures, and materials.
 
+- **Finish (`recipe.finish`, SPEC 4c)**: tail-out / ragged head cut / dissolve are read from the recipe automatically. Drive `emitting` from the attack window so the tail-out starts when the window closes. Unreal: the Custom node also needs inputs `Fin` (TexCoord 2) and `FinH` (TexCoord 3 .r) plus the finish scalar/vector parameters listed in the HLSL header; the mask texture needs mips (the head blur is a mip bias).
+
 ### 3. Verify & Swap
 - Run `docs/SPEC.md` §5 self-check (`debugMode = 1` UV orientation, `debugMode = 2` world-locked stripes, `debugMode = 0` vs `preview.png`).
 - To switch to a new trail later: overwrite only `recipe.json` and `textures/{shape,mask,highlight}.png` keeping sRGB OFF and Clamp/Repeat intact.

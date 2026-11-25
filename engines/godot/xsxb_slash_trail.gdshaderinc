@@ -26,8 +26,16 @@ uniform float mask_tile_v = 0.8;
 uniform float mask_age_drift = 0.15;
 uniform float detail_gain = 1.6;
 uniform float head_soft = 0.005;
+// finish (recipe.finish, SPEC 4c); per-vertex data comes in COLOR.rgb = (alpha multiplier, dissolve progress, head weight)
+uniform float diss_soft = 0.12;
+uniform float head_soft_extra = 0.18;
+uniform float head_blur = 2.5;
+uniform float head_noise_tile = 2.5;
+uniform float diss_edge_glow = 0.0;
+uniform float diss_edge_w = 0.06;
+uniform vec3 diss_edge_color = vec3(0.58, 0.32, 0.06);
 
-vec4 xsxb_slash_trail(vec2 uv, float dist, float t, float xu) {   // xu = filled U (UV2.y): texture lookups
+vec4 xsxb_slash_trail(vec2 uv, float dist, float t, float xu, vec3 fin) {   // xu = filled U (UV2.y): texture lookups
 	float x = uv.x, v = uv.y;
 	if (debug_mode == 2) return vec4(vec3(fract(dist)), 1.0);
 	if (debug_mode == 1) return vec4(xu, v, 0.0, 1.0);   // red = filled U
@@ -43,5 +51,15 @@ vec4 xsxb_slash_trail(vec2 uv, float dist, float t, float xu) {   // xu = filled
 	float hl = sv < 0.0 ? 0.0 : texture(highlight_tex, vec2(xu, 1.0 - sv)).r;
 	float a = clamp(shp * det * keep * alpha * smoothstep(0.0, head_soft, xu), 0.0, 1.0);
 	vec3 c = color * hdr + edge_color * edge * edge_glow + highlight_color * hl * highlight;
+	a *= fin.x;
+	if (fin.y > 0.0) {   // noise dissolve, ragged + blurred near the head
+		float p = fin.y, h = diss_soft + fin.z * head_soft_extra;
+		float n = texture(mask_tex, vec2(dist * mask_tile_per_m * head_noise_tile, v * 0.8), fin.z * head_blur).r;
+		float q = n + 2.0 * p - 1.0;
+		float dz = smoothstep(clamp(p - h, 0.0, 1.0), clamp(p + h, 0.0, 1.0), q);
+		float de = smoothstep(p - h - diss_edge_w, p - h, q) * (1.0 - dz) * clamp(p * 8.0, 0.0, 1.0);
+		a *= 1.0 - dz;
+		c += diss_edge_color * de * diss_edge_glow;
+	}
 	return vec4(c, a);
 }

@@ -108,6 +108,44 @@ These are extra keys; the v1 engine ports ignore them and still draw the ribbon 
 - Texture styles (v12) are baked into the exported PNGs, so the recipe and engine shaders do not change: shape/highlight `crescent`, `feather`, `flame`, `brush`, `double`; mask `ripple`, `bolt`, `fiber`, `pixel`, `wave`, `scale` (all tileable).
 - `preview.bladeLengthM / hiltOffsetM` now follow the loaded weapon (glb); `widthM` already includes the weapon's width scale.
 
+## 4c. Finish: how a stroke ends (`recipe.finish`, added 2026-11-25, same recipe version)
+
+Without it, when the attack window closes the newest end of the trail (at the weapon) is a straight, hard cut that stays on screen while the trail ages. Missing `finish` = all off (old look). All three parts are optional and independent; the reference scripts in `engines/` implement them.
+
+**Tail-out** `finish.tailOut {on, durationS}` (default 0.08 s): when emitting turns off (attack window ends), keep sampling the blade for `durationS` more. Each sample stores `f = 0.5 + 0.5*cos(pi * clamp((t - tEnd) / durationS, 0, 1))`, `tEnd` = time of the last sample inside the window (`f = 1` before). **Alpha** is multiplied by `f`; the width is not changed. Hit detection is not touched.
+
+**Head cut** `finish.headCut {on, lengthM, rampS, ragged, blurLod, extraSoftness, fade, noiseTileX, tailTip}`: per stroke, `H` = its newest sample.
+
+```
+k   = saturate((now - H.t - one sample interval) / rampS)          // 0 while the stroke still grows, then ramps in (0.04 s)
+hr  = k * (1 - smoothstep(0, 1, (H.dist - dist) / lengthM))          // 1 at the head, 0 after lengthM metres
+hr  = max(hr, 1 - f)                                                // the tail-out part counts as head
+alphaMul = f * (1 - fade * hr)
+width   *= smoothstep(0, 1, (1 - u) / tailTip)    only if tailTip > 0 (u = filled U; narrows the OLD end, never the head)
+```
+
+**Dissolve** `finish.dissolve {on, start, softness, headAmount = headCut.ragged, edgeGlow, edgeWidth, edgeColor}`:
+
+```
+p  = max(dissolve.on ? saturate((age - start) / (1 - start)) : 0,  headCut.on ? ragged * hr : 0)
+```
+
+Per vertex pass `(alphaMul, p, hr)` (Unreal UV2, Godot COLOR.rgb, Unity TEXCOORD2). In the pixel shader, after `a` is computed:
+
+```
+a *= alphaMul
+if (p > 0):
+    h  = softness + hr * extraSoftness
+    n  = MASK(d * maskTilePerM * noiseTileX + maskOffset.x,  v * 0.8 + maskOffset.y,  mip bias = hr * blurLod)   // no pan: the holes grow in place
+    q  = n + 2p - 1
+    dz = smoothstep(saturate(p - h), saturate(p + h), q)            // 0 = kept, 1 = gone; p = 1 removes everything
+    de = smoothstep(p - h - edgeWidth, p - h, q) * (1 - dz) * saturate(8p)
+    a *= 1 - dz
+    rgb += edgeColor * de * edgeGlow
+```
+
+The head therefore ends in a ragged, locally blurred (mip bias + wider smoothstep) and fainter edge instead of a straight line, and the width stays the same. Tool defaults: tail-out 0.08 s; head cut 0.22 m, ramp 0.04 s, ragged 0.85, blur 2.5, extra softness 0.18, fade 0.5, noise tile ×2.5, tailTip 0; dissolve start 0.4, softness 0.12, edge glow 0.
+
 ## 5. Self-check (do this after every port)
 
 1. Set the debug mode in the reference shader to **1** (red = texture U: filled U `UV1.y`, or age when fill is off; green = V). Swing once:

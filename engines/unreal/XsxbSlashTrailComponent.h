@@ -41,11 +41,34 @@ public:
 	/** 0 off, 1 UV0 (red age, green V), 2 frac(dist). */
 	UPROPERTY(EditAnywhere, Category="XsxbSlashTrail", meta=(ClampMin=0, ClampMax=2)) int32 DebugMode = 0;
 
+	// ---- Finish (docs/SPEC.md 4c): how a stroke ends. Read from recipe.finish in BeginPlay (missing = off). ----
+	/** Tail-out: after emitting stops keep following the blade for TailOutS, alpha fading 1 -> 0 (width unchanged). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") bool bTailOut = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float TailOutS = .08f;
+	/** Head cut: once a stroke stops growing, its newest HeadLenM metres get a ragged, blurred, fainter edge instead of a straight cut. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") bool bHeadCut = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadLenM = .22f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadRampS = .04f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadRagged = .85f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadBlur = 2.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadSoftExtra = .18f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadFade = .5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float HeadNoiseTile = 2.5f;
+	/** > 0 narrows the OLD end of each stroke to a point (never the head). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float TailTip = 0.f;
+	/** Noise dissolve over age (from DissStart to the end of life). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") bool bDissolve = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float DissStart = .4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float DissSoft = .12f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float DissEdgeGlow = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") float DissEdgeW = .06f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="XsxbSlashTrail|Finish") FLinearColor DissEdgeColor = FLinearColor(.58f, .32f, .06f, 0.f);
+
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
-	struct FSample { FVector Tip; FVector Dir; double T; float Dist; int32 Swing; };
+	struct FSample { FVector Tip; FVector Dir; double T; float Dist; int32 Swing; float F = 1.f; };
 	struct FRun
 	{
 		float WidthM = .8f, LifeS = .4f, Taper = .55f;
@@ -63,6 +86,10 @@ private:
 	bool bHasPrev = false, bWas = false;
 	float Dist = 0.f;   // metres
 	int32 Swing = 0;
+	double TailStart = -1.0;   // time of the last sample inside the window while tailing out (< 0 = not tailing)
+	float SampleDt = 1.f / 60.f;
+	void ReadFinish(const TSharedPtr<class FJsonObject>& Root);
+	void SetFinishParams(class UMaterialInstanceDynamic* M) const;
 	double Now = 0.0;
 
 	void AddSample(const FVector& Tip, const FVector& Hilt, double T);

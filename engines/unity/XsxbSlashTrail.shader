@@ -32,6 +32,14 @@ Shader "XSXB-Slash/Layer"
         _MaskAgeDrift ("maskAgeDrift", Float) = 0.15
         _DetailGain ("detailGain", Float) = 1.6
         _HeadSoft ("headSoft", Float) = 0.005
+        // finish (recipe.finish, SPEC 4c); per-vertex data in TEXCOORD2 = (alpha multiplier, dissolve progress, head weight)
+        _DissSoft ("Dissolve Softness", Float) = 0.12
+        _HeadSoftExtra ("Head Extra Softness", Float) = 0.18
+        _HeadBlur ("Head Blur (mip bias)", Float) = 2.5
+        _HeadNoiseTile ("Head Noise Tile", Float) = 2.5
+        _DissEdgeGlow ("Dissolve Edge Glow", Float) = 0
+        _DissEdgeW ("Dissolve Edge Width", Float) = 0.06
+        _DissEdgeColor ("Dissolve Edge Color (linear)", Vector) = (0.58,0.32,0.06,0)
         [HideInInspector] _SrcBlend ("", Float) = 5   // SrcAlpha; One for additive
         [HideInInspector] _DstBlend ("", Float) = 10  // OneMinusSrcAlpha; One for additive
     }
@@ -52,9 +60,10 @@ Shader "XSXB-Slash/Layer"
             float _Alpha, _Hdr, _WindowNarrow, _MaskAmount, _MaskTilePerM, _MaskPanPerS, _ErodeSpeed, _ErodeSharp;
             float _EdgeWidth, _EdgeGlow, _Highlight, _Additive, _Debug, _TrailTime;
             float _ErodeBase, _ErodeAgePow, _ErodeInner, _MaskTileV, _MaskAgeDrift, _DetailGain, _HeadSoft;
-            struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; float2 uv1 : TEXCOORD1; };
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 dist : TEXCOORD1; };   // dist.y = filled U
-            v2f vert (appdata i) { v2f o; o.pos = UnityObjectToClipPos(i.vertex); o.uv = i.uv; o.dist = i.uv1; return o; }
+            float _DissSoft, _HeadSoftExtra, _HeadBlur, _HeadNoiseTile, _DissEdgeGlow, _DissEdgeW; float4 _DissEdgeColor;
+            struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; float2 uv1 : TEXCOORD1; float3 fin : TEXCOORD2; };
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 dist : TEXCOORD1; float3 fin : TEXCOORD2; };   // dist.y = filled U
+            v2f vert (appdata i) { v2f o; o.pos = UnityObjectToClipPos(i.vertex); o.uv = i.uv; o.dist = i.uv1; o.fin = i.fin; return o; }
             float4 frag (v2f i) : SV_Target
             {
                 float x = i.uv.x, v = i.uv.y, xu = i.dist.y;   // x = age (dissolve/taper), xu = filled U (texture lookups)
@@ -72,6 +81,17 @@ Shader "XSXB-Slash/Layer"
                 float hl = sv < 0 ? 0 : tex2D(_HighlightTex, float2(xu, sv)).r;
                 float a = saturate(shp * det * keep * _Alpha * smoothstep(0, _HeadSoft, xu));
                 float3 c = _Color.rgb * _Hdr + _EdgeColor.rgb * edge * _EdgeGlow + _HighlightColor.rgb * hl * _Highlight;
+                a *= i.fin.x;
+                if (i.fin.y > 0)   // noise dissolve, ragged + blurred near the head
+                {
+                    float p = i.fin.y, h = _DissSoft + i.fin.z * _HeadSoftExtra;
+                    float n = tex2Dbias(_MaskTex, float4(i.dist.x * _MaskTilePerM * _HeadNoiseTile, v * 0.8, 0, i.fin.z * _HeadBlur)).r;
+                    float q = n + 2 * p - 1;
+                    float dz = smoothstep(saturate(p - h), saturate(p + h), q);
+                    float de = smoothstep(p - h - _DissEdgeW, p - h, q) * (1 - dz) * saturate(p * 8);
+                    a *= 1 - dz;
+                    c += _DissEdgeColor.rgb * de * _DissEdgeGlow;
+                }
                 // colours are already linear; in a Gamma-space project convert them on the C# side instead
                 return _Additive > 0.5 ? float4(c * a, 1) : float4(c, a);
             }
